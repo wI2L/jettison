@@ -1,0 +1,990 @@
+package jettison
+
+import (
+	"bytes"
+	"encoding"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"reflect"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
+	"unicode/utf8"
+	"unsafe"
+
+	"github.com/modern-go/reflect2"
+)
+
+const (
+	zero = uintptr(0)
+	hex  = "0123456789abcdef"
+)
+
+// defaultTimeLayout is the layout used by default
+// to format a time.Time, unless otherwise specified.
+// This is compliant with the ECMA specification and
+// the JavaScript Date's toJSON method implementation.
+const defaultTimeLayout = time.RFC3339Nano
+
+var (
+	nilptr            = unsafe.Pointer(nil)
+	timeType          = reflect.TypeOf(time.Time{})
+	durationType      = reflect.TypeOf(time.Duration(0))
+	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	typeInstrCache    sync.Map // map[reflect.Type]Instruction
+)
+
+var bpool = sync.Pool{
+	New: func() interface{} {
+		return &bytes.Buffer{}
+	},
+}
+
+// cachedTypeInstr is the same as typeInstr, but
+// uses a cache to avoid duplicate instructions.
+func cachedTypeInstr(t reflect.Type) (Instruction, error) {
+	if instr, ok := typeInstrCache.Load(t); ok {
+		return instr.(Instruction), nil
+	}
+	// To deal with recursive types, populate the
+	// instructions cache with an indirect func
+	// before we build it. This type waits on the
+	// real instruction (ins) to be ready and then
+	// calls it. This indirect function is only
+	// used for recursive types.
+	var (
+		wg  sync.WaitGroup
+		err error
+		ins Instruction
+	)
+	wg.Add(1)
+	i, ok := typeInstrCache.LoadOrStore(t,
+		Instruction(func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			wg.Wait()
+			return ins(p, w, es)
+		}),
+	)
+	if ok {
+		return i.(Instruction), nil
+	}
+	// Generate the real instruction and replace
+	// the indirect func with it.
+	ins, err = newTypeInstr(t)
+	if err != nil {
+		// Remove the indirect function inserted
+		// previously if the type is unsupported
+		// to prevent the return of a nil error
+		// on future calls for the same type.
+		typeInstrCache.Delete(t)
+		return nil, err
+	}
+	wg.Done()
+	typeInstrCache.Store(t, ins)
+
+	return ins, nil
+}
+
+// newTypeInstr returns the instruction to encode t.
+// It creates a new Encoder instance to encode some
+// composite types, such as struct and map.
+func newTypeInstr(t reflect.Type) (Instruction, error) {
+	// Special types must be checked first, because
+	// a Duration is an int64 and could be interpreted
+	// as a primitive. Also, time.Time implements the
+	// TextMarshaler interface, but we want to use our
+	// own encoding logic.
+	if isSpecialType(t) {
+		return specialTypeInstr(t), nil
+	}
+	if instr := marshalerInstr(t); instr != nil {
+		return instr, nil
+	}
+	if isPrimitiveType(t) {
+		return primitiveInstr(t.Kind()), nil
+	}
+	var (
+		err error
+		ins Instruction
+	)
+	switch t.Kind() {
+	case reflect.Array:
+		ins, err = newArrayInstr(t)
+	case reflect.Slice:
+		ins, err = newSliceInstr(t)
+	case reflect.Struct:
+		ins, err = newStructInstr(t)
+	case reflect.Map:
+		ins, err = newMapInstr(t)
+	case reflect.Interface:
+		return interfaceInstr, nil
+	case reflect.Ptr:
+		et := t.Elem()
+		einstr, err := cachedTypeInstr(et)
+		if err != nil {
+			return nil, err
+		}
+		return func(v unsafe.Pointer, w Writer, es *encodeState) error {
+			p := *(*unsafe.Pointer)(v)
+			if p == nilptr {
+				_, err := w.WriteString("null")
+				return err
+			}
+			return einstr(p, w, es)
+		}, nil
+	default:
+		return nil, &UnsupportedTypeError{Typ: t}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return ins, nil
+}
+
+func marshalerInstr(t reflect.Type) Instruction {
+	if t.Implements(jsonMarshalerType) {
+		return newJSONMarshalerInstr(t)
+	}
+	if t.Kind() != reflect.Ptr {
+		if reflect.PtrTo(t).Implements(jsonMarshalerType) {
+			return newJSONMarshalerInstr(t)
+		}
+	}
+	if t.Implements(textMarshalerType) {
+		return newTextMarshalerInstr(t)
+	}
+	if t.Kind() != reflect.Ptr {
+		if reflect.PtrTo(t).Implements(textMarshalerType) {
+			return newTextMarshalerInstr(t)
+		}
+	}
+	return nil
+}
+
+// newJSONMarshalerInstr returns an instruction to
+// encode the given type using its MarshalJSON method.
+func newJSONMarshalerInstr(t reflect.Type) Instruction {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p)
+		ev := v.Elem()
+
+		// Indirect v if it points to a value
+		// having a pointer-receiver type.
+		if ev.Kind() == reflect.Ptr {
+			v = ev
+		}
+		// If the value is nil, the MarshalJSON
+		// method cannot be invoked, and it encodes
+		// to an empty string.
+		if v.IsNil() {
+			return nil
+		}
+		m, _ := v.Interface().(json.Marshaler)
+		b, err := m.MarshalJSON()
+		if err != nil {
+			return &MarshalerError{t, err}
+		}
+		_, err = w.Write(b)
+		return err
+	}
+}
+
+// newTextMarshalerInstr returns an instruction to
+// encode the given type using its MarshalText method.
+// The instruction quotes the result returned by the
+// invocation of the method.
+func newTextMarshalerInstr(t reflect.Type) Instruction {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p)
+		ev := v.Elem()
+
+		// Indirect v if it points to a value
+		// having a pointer-receiver type.
+		if ev.Kind() == reflect.Ptr {
+			v = ev
+		}
+		// If the value is nil, the MarshalText
+		// method cannot be invoked, and it encodes
+		// to an empty string.
+		if v.IsNil() {
+			return nil
+		}
+		m, _ := v.Interface().(encoding.TextMarshaler)
+		b, err := m.MarshalText()
+		if err != nil {
+			return &MarshalerError{t, err}
+		}
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+		if err := writeEscapedBytes(b, w, es); err != nil {
+			return err
+		}
+		return w.WriteByte('"')
+	}
+}
+
+func specialTypeInstr(t reflect.Type) Instruction {
+	switch t {
+	case timeType:
+		return timeInstr
+	case durationType:
+		return durationInstr
+	default:
+		return nil
+	}
+}
+
+// primitiveInstr returns the instruction associated
+// with the primitive type that has the given kind.
+func primitiveInstr(k reflect.Kind) Instruction {
+	switch k {
+	case reflect.String:
+		return stringInstr
+	case reflect.Bool:
+		return boolInstr
+	case reflect.Int:
+		return intInstr
+	case reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64:
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			return integerInstr(p, w, es, k)
+		}
+	case reflect.Uint:
+		return uintInstr
+	case reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Uintptr:
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			return unsignedIntegerInstr(p, w, es, k)
+		}
+	case reflect.Float32:
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			return floatInstr(p, w, es, 32)
+		}
+	case reflect.Float64:
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			return floatInstr(p, w, es, 64)
+		}
+	default:
+		return nil
+	}
+}
+
+// boolInstr writes a boolean string to w.
+func boolInstr(p unsafe.Pointer, w Writer, _ *encodeState) error {
+	v := *(*bool)(p)
+	var err error
+	if v {
+		_, err = w.WriteString("true")
+	} else {
+		_, err = w.WriteString("false")
+	}
+	return err
+}
+
+// stringInstr writes a quoted string to w.
+func stringInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	if err := w.WriteByte('"'); err != nil {
+		return err
+	}
+	if err := writeEscapedBytes(spb(p), w, es); err != nil {
+		return err
+	}
+	return w.WriteByte('"')
+}
+
+func quotedStringInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	if _, err := w.WriteString(`\"`); err != nil {
+		return err
+	}
+	if err := writeEscapedBytes(spb(p), w, es); err != nil {
+		return err
+	}
+	_, err := w.WriteString(`\"`)
+	return err
+}
+
+func spb(p unsafe.Pointer) []byte {
+	shdr := (*reflect.StringHeader)(p)
+	return *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: shdr.Data,
+		Len:  shdr.Len,
+		Cap:  shdr.Len,
+	}))
+}
+
+// isSafeJSONChar returns whether the char c
+// can be used in a JSON string without escaping.
+func isSafeJSONChar(c byte) bool {
+	if c < 0x20 || c == '"' || c == '\\' || c == '/' {
+		return false
+	}
+	return true
+}
+
+func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
+	if len(b) == 0 {
+		return nil
+	}
+	at, i := 0, 0
+	if es.noStringEscape {
+		goto rest
+	}
+	for _, c := range b {
+		if c < utf8.RuneSelf {
+			// If the current character doesn't need
+			// to be escaped, accumulate the bytes to
+			// save some write operations.
+			if isSafeJSONChar(c) {
+				i++
+				continue
+			}
+			// Write accumulated single-byte characters.
+			if at < i {
+				if _, err := w.Write(b[at:i]); err != nil {
+					return err
+				}
+			}
+			var err error
+			if err := w.WriteByte('\\'); err != nil {
+				return err
+			}
+			switch c {
+			case '"', '\\', '/':
+				err = w.WriteByte(c)
+			case '\b': // 0x8, backspace
+				err = w.WriteByte('b')
+			case '\f': // 0xC, form feed
+				err = w.WriteByte('f')
+			case '\n': // 0xA, line feed
+				err = w.WriteByte('n')
+			case '\r': // 0xD, carriage return
+				err = w.WriteByte('r')
+			case '\t': // 0x9, horizontal tab
+				err = w.WriteByte('t')
+			default:
+				buf := es.scratch[:0]
+				buf = append(buf, "u00"...)
+				buf = append(buf, hex[c>>4])
+				buf = append(buf, hex[c&0xF])
+				_, err = w.Write(buf)
+			}
+			if err != nil {
+				return err
+			}
+			i++
+			at = i
+		}
+	}
+rest:
+	// Write remaining bytes.
+	if at < len(b) {
+		if _, err := w.Write(b[at:]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+//nolint:interfacer
+func integerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
+	var i int64
+	switch k {
+	case reflect.Int:
+		i = int64(*(*int)(p))
+	case reflect.Int8:
+		i = int64(*(*int8)(p))
+	case reflect.Int16:
+		i = int64(*(*int16)(p))
+	case reflect.Int32:
+		i = int64(*(*int32)(p))
+	case reflect.Int64:
+		i = *(*int64)(p)
+	default:
+		return fmt.Errorf("invalid integer kind: %s", k)
+	}
+	b := strconv.AppendInt(es.scratch[:0], i, 10)
+	_, err := w.Write(b)
+	return err
+}
+
+func intInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	b := strconv.AppendInt(es.scratch[:0], int64(*(*int)(p)), 10)
+	_, err := w.Write(b)
+	return err
+}
+
+//nolint:interfacer
+func unsignedIntegerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
+	var i uint64
+	switch k {
+	case reflect.Uint:
+		i = uint64(*(*uint)(p))
+	case reflect.Uint8:
+		i = uint64(*(*uint8)(p))
+	case reflect.Uint16:
+		i = uint64(*(*uint16)(p))
+	case reflect.Uint32:
+		i = uint64(*(*uint32)(p))
+	case reflect.Uint64:
+		i = *(*uint64)(p)
+	case reflect.Uintptr:
+		i = uint64(*(*uintptr)(p))
+	default:
+		return fmt.Errorf("invalid unsigned integer kind: %s", k)
+	}
+	b := strconv.AppendUint(es.scratch[:0], i, 10)
+	_, err := w.Write(b)
+	return err
+}
+
+func uintInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	b := strconv.AppendUint(es.scratch[:0], uint64(*(*uint)(p)), 10)
+	_, err := w.Write(b)
+	return err
+}
+
+//nolint:interfacer
+func floatInstr(p unsafe.Pointer, w Writer, es *encodeState, bitSize int) error {
+	var f float64
+	switch bitSize {
+	case 32:
+		f = float64(*(*float32)(p))
+	case 64:
+		f = *(*float64)(p)
+	default:
+		return fmt.Errorf("invalid float bit size: %d", bitSize)
+	}
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return &UnsupportedValueError{strconv.FormatFloat(f, 'g', -1, bitSize)}
+	}
+	// Convert as it was an ES6 number to string conversion.
+	// This matches most other JSON generators. The following
+	// code is taken from the floatEncoder implementation of
+	// the encoding/json package of the Go std library.
+	abs := math.Abs(f)
+	format := byte('f')
+	if abs != 0 {
+		if bitSize == 64 && (abs < 1e-6 || abs >= 1e21) ||
+			bitSize == 32 && (float32(abs) < 1e-6 || float32(abs) >= 1e21) {
+			format = 'e'
+		}
+	}
+	b := strconv.AppendFloat(es.scratch[:0], f, format, -1, bitSize)
+	if format == 'e' {
+		n := len(b)
+		if n >= 4 && b[n-4] == 'e' && b[n-3] == '-' && b[n-2] == '0' {
+			b[n-2] = b[n-1]
+			b = b[:n-1]
+		}
+	}
+	_, err := w.Write(b)
+	return err
+}
+
+// writeByteArrayAsString writes a byte array to w as a JSON string.
+func writeByteArrayAsString(v unsafe.Pointer, w Writer, es *encodeState, length int) error {
+	if err := w.WriteByte('"'); err != nil {
+		return err
+	}
+	// For byte type, size is guaranteed to be 1.
+	// https://golang.org/ref/spec#Size_and_alignment_guarantees
+	b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(v),
+		Len:  length,
+		Cap:  length,
+	}))
+	if err := writeEscapedBytes(b, w, es); err != nil {
+		return err
+	}
+	return w.WriteByte('"')
+}
+
+// byteSliceInstr writes a byte slice to w as a
+// JSON string. If es.byteSliceAsString is true,
+// the bytes are written directly to the stream,
+// otherwise, it writes a base64 representation.
+func byteSliceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	shdr := *(*reflect.SliceHeader)(p)
+	if shdr.Data == zero {
+		_, err := w.WriteString("null")
+		return err
+	}
+	b := *(*[]byte)(p)
+
+	if err := w.WriteByte('"'); err != nil {
+		return err
+	}
+	var err error
+	if es.noBase64Slice {
+		err = writeEscapedBytes(b, w, es)
+	} else {
+		err = writeBase64ByteSlice(b, w, es)
+	}
+	if err != nil {
+		return err
+	}
+	return w.WriteByte('"')
+}
+
+//nolint:interfacer
+func writeBase64ByteSlice(b []byte, w Writer, es *encodeState) error {
+	l := base64.StdEncoding.EncodedLen(len(b))
+	if l <= 1024 {
+		var dst []byte
+		// If the length of bytes to encode fits in
+		// st.scratch, avoid an extra allocation and
+		// use the cheaper Encode method.
+		if l <= len(es.scratch) {
+			dst = es.scratch[:l]
+		} else {
+			// Allocate a new buffer.
+			dst = make([]byte, l)
+		}
+		base64.StdEncoding.Encode(dst, b)
+		_, err := w.Write(dst)
+		return err
+	}
+	// Use a new encoder that writes
+	// directly to the output stream.
+	enc := base64.NewEncoder(base64.StdEncoding, w)
+	if _, err := enc.Write(b); err != nil {
+		return err
+	}
+	return enc.Close()
+}
+
+// timeInstr writes a time.Time value to w.
+// It is formatted as a string using the layout defined
+// by es.timeLayout, or as an integer representing a Unix
+// timestamp if es.useTimestamps is true.
+func timeInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	t := *(*time.Time)(p)
+	if y := t.Year(); y < 0 || y >= 10000 {
+		// see issue golang.org/issue/4556#c15
+		return errors.New("time: year outside of range [0,9999]")
+	}
+	if es.useTimestamps {
+		ts := t.Unix()
+		b := strconv.AppendInt(es.scratch[:0], ts, 10)
+		_, err := w.Write(b)
+		return err
+	}
+	b := t.AppendFormat(es.scratch[:0], es.timeLayout)
+	if err := w.WriteByte('"'); err != nil {
+		return err
+	}
+	if _, err := w.Write(b); err != nil {
+		return err
+	}
+	return w.WriteByte('"')
+}
+
+// durationInstr writes a time.Duration to w.
+func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	d := *(*time.Duration)(p)
+
+	if es.durationFmt == DurationString {
+		s := d.String()
+		b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: (*reflect.StringHeader)(unsafe.Pointer(&s)).Data,
+			Len:  len(s),
+			Cap:  len(s),
+		}))
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+		if _, err := w.Write(b); err != nil {
+			return err
+		}
+		return w.WriteByte('"')
+	}
+	switch es.durationFmt {
+	case DurationMinutes:
+		f := d.Minutes()
+		return floatInstr(unsafe.Pointer(&f), w, es, 64)
+	case DurationSeconds:
+		f := d.Seconds()
+		return floatInstr(unsafe.Pointer(&f), w, es, 64)
+	case DurationMicroseconds:
+		i := int64(d) / 1e3
+		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+	case DurationMilliseconds:
+		i := int64(d) / 1e6
+		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+	case DurationNanoseconds:
+		i := d.Nanoseconds()
+		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+	}
+	return fmt.Errorf("unknown duration format: %v", es.durationFmt)
+}
+
+// interfaceInstr writes an interface value to w.
+func interfaceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	i := *(*interface{})(p)
+	if i == nil {
+		_, err := w.WriteString("null")
+		return err
+	}
+	v := reflect.ValueOf(i)
+
+	if !v.IsValid() {
+		return fmt.Errorf("iface: invalid value: %v", v)
+	}
+	vt := v.Type()
+	isPtr := vt.Kind() == reflect.Ptr
+	if isPtr {
+		if v.IsNil() {
+			_, err := w.WriteString("null")
+			return err
+		}
+		vt = vt.Elem()
+	}
+	instr, err := cachedTypeInstr(vt)
+	if err != nil {
+		return err
+	}
+	if !isPtr {
+		vp := reflect.New(v.Type())
+		vp.Elem().Set(v)
+		v = vp
+	}
+	return instr(unsafe.Pointer(v.Pointer()), w, es)
+}
+
+// newArrayInstr returns a new instruction to encode
+// a Go array. It returns an error if the given type
+// is unexpected, or if the array value type is not
+// supported.
+func newArrayInstr(t reflect.Type) (Instruction, error) {
+	if t.Kind() != reflect.Array {
+		return nil, errors.New("invalid type")
+	}
+	et := t.Elem()
+
+	// Byte arrays does not encode as a string
+	// by default, the behavior is defined by
+	// the encoder's options.
+	isByteArray := false
+	if et.Kind() == reflect.Uint8 {
+		pe := reflect.PtrTo(et)
+		if !pe.Implements(jsonMarshalerType) && !pe.Implements(textMarshalerType) {
+			isByteArray = true
+		}
+	}
+	isPtr := et.Kind() == reflect.Ptr
+	if isPtr {
+		et = et.Elem()
+	}
+	eins, err := cachedTypeInstr(et)
+	if err != nil {
+		return nil, &UnsupportedTypeError{Typ: t}
+	}
+	var esz uintptr
+	if !isPtr {
+		esz = et.Size()
+	} else {
+		esz = t.Elem().Size()
+	}
+	length := t.Len()
+
+	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
+		if es.byteArrayAsString && isByteArray {
+			return writeByteArrayAsString(v, w, es, length)
+		}
+		if err := w.WriteByte('['); err != nil {
+			return err
+		}
+		for i := 0; i < length; i++ {
+			if i != 0 {
+				if err := w.WriteByte(','); err != nil {
+					return err
+				}
+			}
+			var p unsafe.Pointer
+			if isPtr {
+				p = unsafe.Pointer(*(*uintptr)(
+					unsafe.Pointer(uintptr(v) + (uintptr(i) * esz))),
+				)
+				if p == nilptr {
+					if _, err := w.WriteString("null"); err != nil {
+						return err
+					}
+					continue
+				}
+			} else {
+				p = unsafe.Pointer(uintptr(v) + (uintptr(i) * esz))
+			}
+			// Encode the nth element of the array.
+			if err := eins(p, w, es); err != nil {
+				return err
+			}
+		}
+		return w.WriteByte(']')
+	}, nil
+}
+
+// newSliceInstr returns a new instruction to encode
+// a Go slice. It returns an error if the given type
+// is unexpected, or if the slice value type is not
+// supported.
+func newSliceInstr(t reflect.Type) (Instruction, error) {
+	if t.Kind() != reflect.Slice {
+		return nil, errors.New("invalid type")
+	}
+	et := t.Elem()
+
+	// Byte slices are encoded as a string to
+	// comply with the std library behavior.
+	if et.Kind() == reflect.Uint8 {
+		pe := reflect.PtrTo(et)
+		if !pe.Implements(jsonMarshalerType) && !pe.Implements(textMarshalerType) {
+			return byteSliceInstr, nil
+		}
+	}
+	isPtr := et.Kind() == reflect.Ptr
+	if isPtr {
+		et = et.Elem()
+	}
+	eins, err := cachedTypeInstr(et)
+	if err != nil {
+		return nil, &UnsupportedTypeError{Typ: t}
+	}
+	var esz uintptr
+	if !isPtr {
+		esz = et.Size()
+	} else {
+		esz = t.Elem().Size()
+	}
+	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
+		shdr := *(*reflect.SliceHeader)(v)
+		if shdr.Data == zero {
+			if es.nilSliceEmpty {
+				_, err := w.WriteString("[]")
+				return err
+			}
+			// A nil slice cannot be treated like a primitive
+			// type because the pointer will always point to a
+			// non-nil slice header which contains a Data field
+			// with an empty memory address.
+			_, err := w.WriteString("null")
+			return err
+		}
+		if err := w.WriteByte('['); err != nil {
+			return err
+		}
+		for i := zero; i < uintptr(shdr.Len); i++ {
+			if i != zero {
+				if err := w.WriteByte(','); err != nil {
+					return err
+				}
+			}
+			var p unsafe.Pointer
+			if isPtr {
+				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(shdr.Data + (i * esz))))
+				if p == nilptr {
+					if _, err := w.WriteString("null"); err != nil {
+						return err
+					}
+					continue
+				}
+			} else {
+				p = unsafe.Pointer(shdr.Data + (i * esz))
+			}
+			// Encode the nth element of the slice.
+			if err := eins(p, w, es); err != nil {
+				return err
+			}
+		}
+		return w.WriteByte(']')
+	}, nil
+}
+
+type kv struct {
+	key []byte
+	val []byte
+}
+
+type keyvalue []kv
+
+func (kv keyvalue) Len() int           { return len(kv) }
+func (kv keyvalue) Swap(i, j int)      { kv[i], kv[j] = kv[j], kv[i] }
+func (kv keyvalue) Less(i, j int) bool { return bytes.Compare(kv[i].key, kv[j].key) < 0 }
+
+// newMapInstr returns the instruction to
+// encode a Go map. It returns an error if
+// the given type is unexpected.
+func newMapInstr(t reflect.Type) (Instruction, error) {
+	if t.Kind() != reflect.Map {
+		return nil, errors.New("invalid type")
+	}
+	kt := t.Key()
+
+	if !isString(kt) && !isInteger(kt) && !kt.Implements(textMarshalerType) {
+		return nil, &UnsupportedTypeError{Typ: t}
+	}
+	vinstr, err := cachedTypeInstr(t.Elem())
+	if err != nil {
+		return nil, err
+	}
+	kinstr, err := cachedTypeInstr(kt)
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the key instruction for types that
+	// do not encode with quotes by default.
+	if !isString(kt) && !kt.Implements(textMarshalerType) {
+		kinstr = wrapQuoteInstr(kinstr)
+	}
+	typ2 := reflect2.Type2(t)
+	mtyp := typ2.(*reflect2.UnsafeMapType)
+
+	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
+		p := *(*unsafe.Pointer)(v)
+		if p == nilptr {
+			if es.nilMapEmpty {
+				_, err := w.WriteString("{}")
+				return err
+			}
+			_, err := w.WriteString("null")
+			return err
+		}
+		if err := w.WriteByte('{'); err != nil {
+			return err
+		}
+		it := mtyp.UnsafeIterate(v)
+		if !es.unsortedMap {
+			if err := encodeSortedMap(it, w, es, kinstr, vinstr); err != nil {
+				return err
+			}
+		} else {
+			if err := encodeUnsortedMap(it, w, es, kinstr, vinstr); err != nil {
+				return err
+			}
+		}
+		return w.WriteByte('}')
+	}, nil
+}
+
+func encodeSortedMap(it reflect2.MapIterator, w Writer, es *encodeState,
+	ki, vi Instruction,
+) error {
+	var (
+		kvs   keyvalue
+		off   int
+		kvbuf = bpool.Get().(*bytes.Buffer)
+	)
+	defer bpool.Put(kvbuf)
+	kvbuf.Reset()
+
+	for i := 0; it.HasNext(); i++ {
+		key, val := it.UnsafeNext()
+		kv := kv{}
+
+		// Encode the key and store the buffer
+		// portion to use during sort.
+		if err := ki(key, kvbuf, es); err != nil {
+			return err
+		}
+		kv.key = kvbuf.Bytes()[off:kvbuf.Len()]
+
+		// Write separator after key.
+		if err := kvbuf.WriteByte(':'); err != nil {
+			return err
+		}
+		// Encode the value and store the buffer
+		// portion corresponding to the semicolon
+		// delimited key/value pair.
+		if err := vi(val, kvbuf, es); err != nil {
+			return err
+		}
+		kv.val = kvbuf.Bytes()[off:kvbuf.Len()]
+		off = kvbuf.Len()
+		kvs = append(kvs, kv)
+	}
+	sort.Sort(kvs) // lexicographical sort by keys
+
+	// Write each k/v couple to the output buffer,
+	// comma-separated, except for the first.
+	for i, kv := range kvs {
+		if i != 0 {
+			if err := w.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		if _, err := w.Write(kv.val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func encodeUnsortedMap(it reflect2.MapIterator, w Writer, es *encodeState,
+	ki, vi Instruction,
+) error {
+	for i := 0; it.HasNext(); i++ {
+		if i != 0 {
+			if err := w.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		key, val := it.UnsafeNext()
+		if err := ki(key, w, es); err != nil {
+			return err
+		}
+		if err := w.WriteByte(':'); err != nil {
+			return err
+		}
+		if err := vi(val, w, es); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isSpecialType(t reflect.Type) bool {
+	return t == timeType || t == durationType
+}
+
+func isPrimitiveType(t reflect.Type) bool {
+	return isInteger(t) || isFloatingPoint(t) || isString(t) || isBoolean(t)
+}
+
+func isBoolean(t reflect.Type) bool { return t.Kind() == reflect.Bool }
+func isString(t reflect.Type) bool  { return t.Kind() == reflect.String }
+
+func isFloatingPoint(t reflect.Type) bool {
+	kind := t.Kind()
+	if kind == reflect.Float32 || kind == reflect.Float64 {
+		return true
+	}
+	return false
+}
+
+func isInteger(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Int,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Uintptr:
+		return true
+	default:
+		return false
+	}
+}
