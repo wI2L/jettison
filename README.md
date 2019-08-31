@@ -13,13 +13,15 @@
 $ go get -u github.com/wI2L/jettison
 ```
 
+> :exclamation: Requires Go1.12+, due to the usage of `io.StringWriter`.
+
 ### Key points
 
 - Fast, see [benchmarks](#benchmarks)
 - Zero allocations on average
 - Behavior *almost* identical to the standard library, by default
 - No code generation required
-- Options available to configure the Encoder
+- Options available to configure encoding
 - Native support for `time.Time` and `time.Duration`
 
 ### Overview
@@ -90,7 +92,7 @@ Opt-in options are available to customize the behavior of the package. The third
 
 ### Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
+> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
 go version go1.12.5 linux/amd64
 
 ##### Simple
