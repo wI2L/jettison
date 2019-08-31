@@ -34,6 +34,7 @@ var (
 	nilptr            = unsafe.Pointer(nil)
 	timeType          = reflect.TypeOf(time.Time{})
 	durationType      = reflect.TypeOf(time.Duration(0))
+	numberType        = reflect.TypeOf(json.Number(""))
 	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 	typeInstrCache    sync.Map // map[reflect.Type]Instruction
@@ -93,11 +94,11 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 // It creates a new Encoder instance to encode some
 // composite types, such as struct and map.
 func newTypeInstr(t reflect.Type) (Instruction, error) {
-	// Special types must be checked first, because
-	// a Duration is an int64 and could be interpreted
-	// as a primitive. Also, time.Time implements the
-	// TextMarshaler interface, but we want to use our
-	// own encoding logic.
+	// Special types must be checked first, because a Duration
+	// is an int64, json.Number is a string, and both would be
+	// interpreted as a primitive.
+	// Also, time.Time implements the TextMarshaler interface,
+	// but we want to use a special instruction instead.
 	if isSpecialType(t) {
 		return specialTypeInstr(t), nil
 	}
@@ -229,11 +230,14 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 }
 
 func specialTypeInstr(t reflect.Type) Instruction {
+	// Keep in sync with isSpecialType.
 	switch t {
 	case timeType:
 		return timeInstr
 	case durationType:
 		return durationInstr
+	case numberType:
+		return numberInstr
 	default:
 		return nil
 	}
@@ -561,6 +565,71 @@ func writeBase64ByteSlice(b []byte, w Writer, es *encodeState) error {
 		return err
 	}
 	return enc.Close()
+}
+
+// numberInstr writes a json.Number value to w.
+func numberInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+	// Cast pointer to string directly to
+	// avoid a useless conversion.
+	n := *(*string)(p)
+	if !isValidNumber(n) {
+		return fmt.Errorf("invalid number literal %q", n)
+	}
+	_, err := w.WriteString(n)
+	return err
+}
+
+// isValidNumber returns whether s is a valid JSON number literal.
+// Taken from encoding/json.
+func isValidNumber(s string) bool {
+	// This function implements the JSON numbers grammar.
+	// See https://tools.ietf.org/html/rfc7159#section-6
+	// and https://www.json.org/img/number.png.
+	if s == "" {
+		return false
+	}
+	// Optional -
+	if s[0] == '-' {
+		s = s[1:]
+		if s == "" {
+			return false
+		}
+	}
+	// Digits
+	switch {
+	default:
+		return false
+	case s[0] == '0':
+		s = s[1:]
+	case '1' <= s[0] && s[0] <= '9':
+		s = s[1:]
+		for len(s) > 0 && '0' <= s[0] && s[0] <= '9' {
+			s = s[1:]
+		}
+	}
+	// . followed by 1 or more digits.
+	if len(s) >= 2 && s[0] == '.' && '0' <= s[1] && s[1] <= '9' {
+		s = s[2:]
+		for len(s) > 0 && '0' <= s[0] && s[0] <= '9' {
+			s = s[1:]
+		}
+	}
+	// e or E followed by an optional - or + and
+	// 1 or more digits.
+	if len(s) >= 2 && (s[0] == 'e' || s[0] == 'E') {
+		s = s[1:]
+		if s[0] == '+' || s[0] == '-' {
+			s = s[1:]
+			if s == "" {
+				return false
+			}
+		}
+		for len(s) > 0 && '0' <= s[0] && s[0] <= '9' {
+			s = s[1:]
+		}
+	}
+	// Make sure we are at the end.
+	return s == ""
 }
 
 // timeInstr writes a time.Time value to w.
@@ -952,7 +1021,8 @@ func encodeUnsortedMap(it reflect2.MapIterator, w Writer, es *encodeState,
 }
 
 func isSpecialType(t reflect.Type) bool {
-	return t == timeType || t == durationType
+	// Keep in sync with types handled by specialTypeInstr.
+	return t == timeType || t == durationType || t == numberType
 }
 
 func isPrimitiveType(t reflect.Type) bool {

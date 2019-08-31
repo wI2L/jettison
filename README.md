@@ -21,6 +21,7 @@ $ go get -u github.com/wI2L/jettison
 - Zero allocations on average
 - Behavior *almost* identical to the standard library, by default
 - No code generation required
+- Clear and simple API
 - Options available to configure encoding
 - Native support for `time.Time` and `time.Duration`
 
@@ -87,8 +88,6 @@ Opt-in options are available to customize the behavior of the package. The third
 - `time.Time` and `Time.Duration` types are handled natively by the package. For the first, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` directly. For the second, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces, the encoder uses the result of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String` based on the duration format configured.
 
 - Nil map keys instances implementing the `TextMarshaler` interface are encoded as an empty string, while the `encoding/package` currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.
-
-- No support for `json.Number` at the moment. Will be added in a later release.
 
 ### Benchmarks
 

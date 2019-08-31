@@ -1190,6 +1190,52 @@ func TestStringEscaping(t *testing.T) {
 	}
 }
 
+// TestJSONNumber tests that a json.Number literal value
+// can be encoded, and that an error is returned if it
+// isn't a valid number according to the JSON grammar.
+func TestJSONNumber(t *testing.T) {
+	testdata := []struct {
+		Number  json.Number
+		Want    string
+		IsValid bool
+	}{
+		{json.Number("42"), "42", true},
+		{json.Number("-42"), "-42", true},
+		{json.Number("24.42"), "24.42", true},
+		{json.Number("-666.66"), "-666.66", true},
+		{json.Number("3.14"), "3.14", true},
+		{json.Number("-3.14"), "-3.14", true},
+		{json.Number("1e3"), "1e3", true},
+		{json.Number("1E-6"), "1E-6", true},
+		{json.Number("1E+42"), "1E+42", true},
+		{json.Number("1E+4.0"), "", false},
+		{json.Number("084"), "", false},
+		{json.Number("-03.14"), "", false},
+		{json.Number("-"), "", false},
+		{json.Number(""), "", false},
+		{json.Number("invalid"), "", false},
+	}
+	for _, tt := range testdata {
+		enc, err := NewEncoder(tt.Number)
+		if err != nil {
+			t.Error(err)
+		}
+		var buf bytes.Buffer
+		err = enc.Encode(&tt.Number, &buf)
+		if err != nil && tt.IsValid {
+			t.Error(err)
+			continue
+		}
+		if err == nil && !tt.IsValid {
+			t.Errorf("for %s, expected non-nil error", tt.Number)
+			continue
+		}
+		if s := buf.String(); s != tt.Want {
+			t.Errorf("got %s, want %s", s, tt.Want)
+		}
+	}
+}
+
 // equalStdLib marshals i to JSON using the encoding/json
 // package and returns whether the output equals b.
 func equalStdLib(t *testing.T, i interface{}, b []byte) bool {
