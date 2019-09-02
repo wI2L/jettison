@@ -404,7 +404,7 @@ func TestTextMarshalerMapKey(t *testing.T) {
 // fields of primitive types can be encoded.
 func TestPrimitiveStructFieldTypes(t *testing.T) {
 	type x struct {
-		A  string  `json:"a"`
+		A  string  `json:"a1"`
 		B1 int     `json:"b1"`
 		B2 int8    `json:"b2"`
 		B3 int16   `json:"b3"`
@@ -421,6 +421,7 @@ func TestPrimitiveStructFieldTypes(t *testing.T) {
 		F  float64 `json:"f"`
 		G  string  `json:"-"`  // ignored
 		H  string  `json:"-,"` // use "-" as key
+		i  string
 	}
 	enc, err := NewEncoder(x{})
 	if err != nil {
@@ -444,6 +445,7 @@ func TestPrimitiveStructFieldTypes(t *testing.T) {
 		F:  math.MaxFloat64,
 		G:  "ignored",
 		H:  "not-ignored",
+		i:  "unexported",
 	}
 	var buf bytes.Buffer
 	if err := enc.Encode(xx, &buf); err != nil {
@@ -465,6 +467,7 @@ func TestPrimitiveStructFieldPointerTypes(t *testing.T) {
 		D *bool    `json:"d"`
 		E *float32 `json:"e"`
 		F *float64 `json:"f"`
+		g *int64
 	}
 	enc, err := NewEncoder(x{})
 	if err != nil {
@@ -476,7 +479,7 @@ func TestPrimitiveStructFieldPointerTypes(t *testing.T) {
 		d = true
 		f = math.MaxFloat64
 	)
-	xx := x{A: &a, B: &b, C: nil, D: &d, E: nil, F: &f}
+	xx := x{A: &a, B: &b, C: nil, D: &d, E: nil, F: &f, g: nil}
 
 	var buf bytes.Buffer
 	if err := enc.Encode(xx, &buf); err != nil {
@@ -641,7 +644,9 @@ func TestCompositeStructFieldTypes(t *testing.T) {
 		A  y `json:"a"`
 		B1 *y
 		B2 *y
-		C  []string               `json:"c"`
+		b3 *y
+		c1 []string
+		C2 []string               `json:"C2"`
 		D  []int                  `json:"d"`
 		E  []bool                 `json:"e"`
 		F  []float32              `json:"f,omitempty"`
@@ -674,6 +679,7 @@ func TestCompositeStructFieldTypes(t *testing.T) {
 		U4 interface{}            `json:"u4,omitempty"`
 		U5 interface{}            `json:"u5"`
 		U6 interface{}            `json:"u6"`
+		u7 interface{}
 	}
 	enc, err := NewEncoder(&x{})
 	if err != nil {
@@ -695,7 +701,9 @@ func TestCompositeStructFieldTypes(t *testing.T) {
 		A:  y{X: "Loreum"},
 		B1: nil,
 		B2: &y{X: "Ipsum"},
-		C:  []string{"one", "two", "three"},
+		b3: nil,
+		c1: nil,
+		C2: []string{"one", "two", "three"},
 		D:  []int{1, 2, 3},
 		E:  []bool{},
 		H:  [3]string{"alpha", "beta", "gamma"},
@@ -720,6 +728,7 @@ func TestCompositeStructFieldTypes(t *testing.T) {
 		U4: false,
 		U5: (*int)(nil), // typed nil
 		U6: i3,          // chain of pointers
+		u7: nil,
 	}
 	var buf bytes.Buffer
 	if err := enc.Encode(xx, &buf); err != nil {
