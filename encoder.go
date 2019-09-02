@@ -94,14 +94,11 @@ func NoStringEscaping(es *encodeState) {
 
 // DurationFmt represents the format used
 // to encode a time.Duration.
-// The zero DurationFmt is not a valid format.
 type DurationFmt int
 
 // Duration formats.
 const (
-	_ DurationFmt = iota
-
-	DurationString
+	DurationString = iota
 	DurationMinutes
 	DurationSeconds
 	DurationMilliseconds

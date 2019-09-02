@@ -28,6 +28,43 @@ func TestNewEncoderNilInterface(t *testing.T) {
 	}
 }
 
+// TestEncodeWithIncompatibleType tests that invoking the
+// Encode method of an encoder with a type that differs from
+// the one for which is was created returns an error.
+func TestEncodeWithIncompatibleType(t *testing.T) {
+	type x struct{}
+	enc, err := NewEncoder(x{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = enc.Encode("Loreum", nil)
+	if err == nil {
+		t.Error("expected non-nil error")
+	}
+}
+
+// TestUnsupportedTypeError tests that UnsupportedTypeError
+// type implements the error builtin interface and that it
+// returns an appropriate error message.
+func TestUnsupportedTypeError(t *testing.T) {
+	ute := &UnsupportedTypeError{Typ: reflect.TypeOf("Loreum")}
+	const want = "unsupported type: string"
+	if s := ute.Error(); s != want {
+		t.Errorf("got %s, want %s", s, want)
+	}
+}
+
+// TestUnsupportedValueError tests that UnsupportedValueError
+// type implements the error builtin interface and that it
+// returns an appropriate error message.
+func TestUnsupportedValueError(t *testing.T) {
+	ute := &UnsupportedValueError{Str: "foobar"}
+	const want = "unsupported value: foobar"
+	if s := ute.Error(); s != want {
+		t.Errorf("got %s, want %s", s, want)
+	}
+}
+
 // TestNilValues tests the behavior of an encoder's
 // Encode method for typed and untyped nil values.
 func TestNilValues(t *testing.T) {
@@ -921,8 +958,19 @@ func TestMarshalerError(t *testing.T) {
 	var buf bytes.Buffer
 	err = enc.Encode(xx, &buf)
 	if err != nil {
-		if _, ok := err.(*MarshalerError); !ok {
-			t.Errorf("got %T, want MarshalerError", err)
+		me, ok := err.(*MarshalerError)
+		if !ok {
+			t.Fatalf("got %T, want MarshalerError", err)
+		}
+		iptyp := reflect.TypeOf(net.IP{})
+		if me.Typ != iptyp {
+			t.Errorf("got %s, want %s", me.Typ, iptyp)
+		}
+		if me.Err == nil {
+			t.Errorf("expected non-nil error")
+		}
+		if me.Error() == "" {
+			t.Error("expected non-empty error message")
 		}
 	} else {
 		t.Error("got nil, want non-nil error")
@@ -1232,6 +1280,29 @@ func TestJSONNumber(t *testing.T) {
 		}
 		if s := buf.String(); s != tt.Want {
 			t.Errorf("got %s, want %s", s, tt.Want)
+		}
+	}
+}
+
+// TestDurationFmtString tests that the String method of
+// the DurationFmt type returns the appropriate description.
+func TestDurationFmtString(t *testing.T) {
+	testdata := []struct {
+		Fmt DurationFmt
+		Str string
+	}{
+		{DurationString, "str"},
+		{DurationMinutes, "min"},
+		{DurationSeconds, "s"},
+		{DurationMilliseconds, "ms"},
+		{DurationMicroseconds, "μs"},
+		{DurationNanoseconds, "nanosecond"},
+		{DurationFmt(-1), "unknown"},
+		{DurationFmt(6), "unknown"},
+	}
+	for _, tt := range testdata {
+		if s := tt.Fmt.String(); s != tt.Str {
+			t.Errorf("got %s, want %s", s, tt.Str)
 		}
 	}
 }

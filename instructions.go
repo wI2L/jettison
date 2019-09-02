@@ -568,7 +568,7 @@ func writeBase64ByteSlice(b []byte, w Writer, es *encodeState) error {
 }
 
 // numberInstr writes a json.Number value to w.
-func numberInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
+func numberInstr(p unsafe.Pointer, w Writer, _ *encodeState) error {
 	// Cast pointer to string directly to
 	// avoid a useless conversion.
 	n := *(*string)(p)
