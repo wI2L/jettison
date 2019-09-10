@@ -1,7 +1,13 @@
 
 <h1 align="center">Jettison</h1>
 <p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is an instructions-based <strong>JSON</strong> encoder inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
-<p align="center"><br><a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a> <a href="https://goreportcard.com/report/wI2L/jettison"><img src="https://goreportcard.com/badge/github.com/wI2L/fizz"></a> <a href="https://travis-ci.org/wI2L/jettison"><img src="https://travis-ci.org/wI2L/jettison.svg?branch=master"></a> <a href="https://codecov.io/gh/wI2L/jettison"><img src="https://codecov.io/gh/wI2L/jettison/branch/master/graph/badge.svg"/></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+<p align="center">
+    <a href="https://github.com/wI2L/jettison/releases"><img src="https://img.shields.io/github/v/tag/wI2L/jettison?color=blueviolet&label=version&sort=semver"></a>
+    <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
+    <a href="https://goreportcard.com/report/wI2L/jettison"><img src="https://goreportcard.com/badge/github.com/wI2L/fizz"></a>
+    <a href="https://travis-ci.org/wI2L/jettison"><img src="https://travis-ci.org/wI2L/jettison.svg?branch=master"></a>
+    <a href="https://codecov.io/gh/wI2L/jettison"><img src="https://codecov.io/gh/wI2L/jettison/branch/master/graph/badge.svg"/></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 <br>
 </p>
 
@@ -9,8 +15,9 @@
 
 ### Installation
 
+Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the *SemVer* format, prefixed with a `v`, starting from `0.2.0`. You can get the latest release using the following command.
 ```sh
-$ go get -u github.com/wI2L/jettison
+$ go get github.com/wI2L/jettison
 ```
 
 > :exclamation: Requires Go1.12+, due to the usage of `io.StringWriter`.
@@ -91,7 +98,7 @@ Opt-in options are available to customize the behavior of the package. The third
 
 ### Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
+> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
 go version go1.12.5 linux/amd64
 
 ##### Simple
