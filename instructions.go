@@ -37,8 +37,9 @@ var (
 	numberType        = reflect.TypeOf(json.Number(""))
 	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
-	typeInstrCache    sync.Map // map[reflect.Type]Instruction
 )
+
+var instrCache sync.Map // map[reflect.Type]Instruction
 
 var bpool = sync.Pool{
 	New: func() interface{} {
@@ -49,7 +50,7 @@ var bpool = sync.Pool{
 // cachedTypeInstr is the same as typeInstr, but
 // uses a cache to avoid duplicate instructions.
 func cachedTypeInstr(t reflect.Type) (Instruction, error) {
-	if instr, ok := typeInstrCache.Load(t); ok {
+	if instr, ok := instrCache.Load(t); ok {
 		return instr.(Instruction), nil
 	}
 	// To deal with recursive types, populate the
@@ -64,7 +65,7 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 		ins Instruction
 	)
 	wg.Add(1)
-	i, ok := typeInstrCache.LoadOrStore(t,
+	i, ok := instrCache.LoadOrStore(t,
 		Instruction(func(p unsafe.Pointer, w Writer, es *encodeState) error {
 			wg.Wait()
 			return ins(p, w, es)
@@ -81,11 +82,11 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 		// previously if the type is unsupported
 		// to prevent the return of a nil error
 		// on future calls for the same type.
-		typeInstrCache.Delete(t)
+		instrCache.Delete(t)
 		return nil, err
 	}
 	wg.Done()
-	typeInstrCache.Store(t, ins)
+	instrCache.Store(t, ins)
 
 	return ins, nil
 }
@@ -129,8 +130,10 @@ func newTypeInstr(t reflect.Type) (Instruction, error) {
 		if err != nil {
 			return nil, err
 		}
-		return func(v unsafe.Pointer, w Writer, es *encodeState) error {
-			p := *(*unsafe.Pointer)(v)
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			if p != nilptr {
+				p = *(*unsafe.Pointer)(p)
+			}
 			if p == nilptr {
 				_, err := w.WriteString("null")
 				return err

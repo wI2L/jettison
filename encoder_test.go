@@ -404,7 +404,7 @@ func TestTextMarshalerMapKey(t *testing.T) {
 // fields of primitive types can be encoded.
 func TestPrimitiveStructFieldTypes(t *testing.T) {
 	type x struct {
-		A  string  `json:"a1"`
+		A  string  `json:"a"`
 		B1 int     `json:"b1"`
 		B2 int8    `json:"b2"`
 		B3 int16   `json:"b3"`
@@ -766,54 +766,360 @@ func TestEmbeddedStructs(t *testing.T) {
 	// because is one-level up.
 	// However, y.v.H and z.v.H are present at the same
 	// level, and therefore are both hidden.
-	type x struct {
+	type x1 struct {
 		A string `json:"a,omitempty"`
 		y
 		B string `json:"b"`
 		v `json:"v"`
 		C string `json:"c,omitempty"`
 		z `json:",omitempty"`
-		*x
+		*x1
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(x1{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	xv := &x{A: "Loreum", y: y{
-		D: math.MinInt8,
-		r: r{J: "Sit Amet"},
-		v: v{H: false},
-	}, z: z{
-		G: math.MaxUint16,
-		y: y{D: 21, r: r{J: "Ipsem"}},
-		v: v{H: true},
-	}, x: &x{
-		A: "Muerol",
-	}}
+	xx1 := &x1{
+		A: "Loreum",
+		y: y{
+			D: math.MinInt8,
+			r: r{J: "Sit Amet"},
+			v: v{H: false},
+		},
+		z: z{
+			G: math.MaxUint16,
+			y: y{D: 21, r: r{J: "Ipsem"}},
+			v: v{H: true},
+		},
+		x1: &x1{
+			A: "Muerol",
+		},
+	}
 	var buf bytes.Buffer
-	if err := enc.Encode(xv, &buf); err != nil {
+	if err := enc.Encode(xx1, &buf); err != nil {
 		t.Fatal(err)
 	}
-	if !equalStdLib(t, xv, buf.Bytes()) {
+	if !equalStdLib(t, xx1, buf.Bytes()) {
 		t.Error("expected outputs to be equal")
 	}
 	// xx is a variant of the x type with the first
 	// field not using the omitempty option.
-	type xx struct {
+	type x2 struct {
 		A int16 `json:"a"`
 		v `json:"v"`
 	}
-	enc, err = NewEncoder(xx{})
+	enc, err = NewEncoder(x2{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	xxv := &xx{A: 42, v: v{I: "Loreum"}}
+	xx2 := &x2{A: 42, v: v{I: "Loreum"}}
 	buf.Reset()
-	if err := enc.Encode(xxv, &buf); err != nil {
+	if err := enc.Encode(xx2, &buf); err != nil {
 		t.Fatal(err)
 	}
-	if !equalStdLib(t, xxv, buf.Bytes()) {
+	if !equalStdLib(t, xx2, buf.Bytes()) {
 		t.Error("expected outputs to be equal")
+	}
+}
+
+// TestAnonymousFields tests advanced cases for anonymous
+// struct fields.
+// Adapted from the encoding/json testsuite.
+func TestAnonymousFields(t *testing.T) {
+	testdata := []struct {
+		label string
+		input func() []interface{}
+	}{{
+		// Both S1 and S2 have a field named X.
+		// From the perspective of S, it is
+		// ambiguous which one X refers to.
+		// This should not encode either field.
+		label: "AmbiguousField",
+		input: func() []interface{} {
+			type (
+				S1 struct{ x, X int }
+				S2 struct{ x, X int }
+				S  struct {
+					S1
+					S2
+				}
+			)
+			return []interface{}{
+				S{S1{1, 2}, S2{3, 4}},
+				&S{S1{5, 6}, S2{7, 8}},
+			}
+		},
+	}, {
+		// Both S1 and S2 have a field named X, but
+		// since S has an X field as well, it takes
+		// precedence over S1.X and S2.X.
+		label: "DominantField",
+		input: func() []interface{} {
+			type (
+				S1 struct{ x, X int }
+				S2 struct{ x, X int }
+				S  struct {
+					S1
+					S2
+					x, X int
+				}
+			)
+			return []interface{}{
+				S{S1{1, 2}, S2{3, 4}, 5, 6},
+				&S{S1{6, 5}, S2{4, 3}, 2, 1},
+			}
+		},
+	}, {
+		// Unexported embedded field of non-struct type
+		// should not be serialized.
+		label: "UnexportedEmbeddedInt",
+		input: func() []interface{} {
+			type (
+				i int
+				S struct{ i }
+			)
+			return []interface{}{S{5}, &S{6}}
+		},
+	}, {
+		// Exported embedded field of non-struct type
+		// should be serialized.
+		label: "ExportedEmbeddedInt",
+		input: func() []interface{} {
+			type (
+				I int
+				S struct{ I }
+			)
+			return []interface{}{S{5}, &S{6}}
+		},
+	}, {
+		// Unexported embedded field of pointer to
+		// non-struct type should not be serialized.
+		label: "UnexportedEmbeddedIntPointer",
+		input: func() []interface{} {
+			type (
+				i int
+				S struct{ *i }
+			)
+			s := S{new(i)}
+			*s.i = 5
+			return []interface{}{s, &s}
+		},
+	}, {
+		// Exported embedded field of pointer to
+		// non-struct type should be serialized.
+		label: "ExportedEmbeddedIntPointer",
+		input: func() []interface{} {
+			type (
+				I int
+				S struct{ *I }
+			)
+			s := S{new(I)}
+			*s.I = 5
+			return []interface{}{s, &s}
+		},
+	}, {
+		// Exported embedded field of nil pointer
+		// to non-struct type should be serialized.
+		label: "ExportedEmbeddedNilIntPointer",
+		input: func() []interface{} {
+			type (
+				I int
+				S struct{ *I }
+			)
+			s := S{new(I)}
+			s.I = nil
+			return []interface{}{s, &s}
+		},
+	}, {
+		// Exported embedded field of nil pointer to
+		// non-struct type should not be serialized
+		// if it has the omitempty option.
+		label: "ExportedEmbeddedNilIntPointerOmitempty",
+		input: func() []interface{} {
+			type (
+				I int
+				S struct {
+					*I `json:",omitempty"`
+				}
+			)
+			s := S{new(I)}
+			s.I = nil
+			return []interface{}{s, &s}
+		},
+	}, {
+		// Exported embedded field of pointer to
+		// struct type should be serialized.
+		label: "ExportedEmbeddedStructPointer",
+		input: func() []interface{} {
+			type (
+				S struct{ X string }
+				T struct{ *S }
+			)
+			t := T{S: &S{
+				X: "Loreum",
+			}}
+			return []interface{}{t, &t}
+		},
+	}, {
+		// Exported fields of embedded structs should
+		// have their exported fields be serialized
+		// regardless of whether the struct types
+		// themselves are exported.
+		label: "EmbeddedStructNonPointer",
+		input: func() []interface{} {
+			type (
+				s1 struct{ x, X int }
+				S2 struct{ y, Y int }
+				S  struct {
+					s1
+					S2
+				}
+			)
+			return []interface{}{
+				S{s1{1, 2}, S2{3, 4}},
+				&S{s1{5, 6}, S2{7, 8}},
+			}
+		},
+	}, {
+		// Exported fields of pointers to embedded
+		// structs should have their exported fields
+		// be serialized regardless of whether the
+		// struct types themselves are exported.
+		label: "EmbeddedStructPointer",
+		input: func() []interface{} {
+			type (
+				s1 struct{ x, X int }
+				S2 struct{ y, Y int }
+				S  struct {
+					*s1
+					*S2
+				}
+			)
+			return []interface{}{
+				S{&s1{1, 2}, &S2{3, 4}},
+				&S{&s1{5, 6}, &S2{7, 8}},
+			}
+		},
+	}, {
+		// Exported fields on embedded unexported
+		// structs at multiple levels of nesting
+		// should still be serialized.
+		label: "NestedStructAndInts",
+		input: func() []interface{} {
+			type (
+				I1 int
+				I2 int
+				i  int
+				s2 struct {
+					I2
+					i
+				}
+				s1 struct {
+					I1
+					i
+					s2
+				}
+				S struct {
+					s1
+					i
+				}
+			)
+			return []interface{}{
+				S{s1{1, 2, s2{3, 4}}, 5},
+				&S{s1{5, 4, s2{3, 2}}, 1},
+			}
+		},
+	}, {
+		// If an anonymous struct pointer field is nil,
+		// we should ignore the embedded fields behind it.
+		// Not properly doing so may result in the wrong
+		// output or a panic.
+		label: "EmbeddedFieldBehindNilPointer",
+		input: func() []interface{} {
+			type (
+				S2 struct{ Field string }
+				S  struct{ *S2 }
+			)
+			return []interface{}{S{}, &S{}}
+		},
+	}, {
+		// A field behind a chain of pointer and
+		// non-pointer embedded fields should be
+		// accessible and serialized.
+		label: "BasicEmbeddedFieldChain",
+		input: func() []interface{} {
+			type (
+				A struct {
+					X1 string
+					X2 *string
+				}
+				B struct{ *A }
+				C struct{ B }
+				D struct{ *C }
+				E struct{ D }
+				F struct{ *E }
+			)
+			s := "Loreum"
+			f := F{E: &E{D: D{C: &C{B: B{A: &A{X1: s, X2: &s}}}}}}
+			return []interface{}{f, &f}
+		},
+	}, {
+		// Variant of the test above, with embedded
+		// fields of type struct that contain one or
+		// more fields themselves.
+		label: "ComplexEmbeddedFieldChain",
+		input: func() []interface{} {
+			type (
+				A struct {
+					X1 string `json:",omitempty"`
+					X2 string
+				}
+				B struct {
+					Z3 *bool
+					A
+				}
+				C struct{ B }
+				D struct {
+					*C
+					Z2 int
+				}
+				E struct{ *D }
+				F struct {
+					Z1 string `json:",omitempty"`
+					*E
+				}
+			)
+			f := F{Z1: "Loreum", E: &E{D: &D{C: &C{B: B{A: A{X2: "Loreum"}, Z3: new(bool)}}, Z2: 1}}}
+			return []interface{}{f, &f}
+		},
+	}}
+	for _, tt := range testdata {
+		tt := tt
+		t.Run(tt.label, func(t *testing.T) {
+			inputs := tt.input()
+			for i, input := range inputs {
+				input := input
+				var label string
+				if i == 0 {
+					label = "non-pointer"
+				} else {
+					label = "pointer"
+				}
+				t.Run(label, func(t *testing.T) {
+					enc, err := NewEncoder(input)
+					if err != nil {
+						t.Error(err)
+					}
+					var buf bytes.Buffer
+					if err := enc.Encode(input, &buf); err != nil {
+						t.Error(err)
+					}
+					if !equalStdLib(t, input, buf.Bytes()) {
+						t.Error("expected outputs to be equal")
+					}
+				})
+			}
+		})
 	}
 }
 

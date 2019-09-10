@@ -118,6 +118,10 @@ func (df DurationFmt) String() string {
 }
 
 type encodeState struct {
+	// inputPrt indicates if the input
+	// value to encode is a pointer.
+	inputPtr bool
+
 	// scratch is used as temporary buffer
 	// for types conversions using Append*
 	// like functions.
@@ -246,17 +250,25 @@ func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
 		p = reflect2.PtrOf(i)
 	}
 	if p == nilptr {
-		// Typed nil interface.
-		_, err := w.WriteString("null")
-		return err
+		// The exception for the struct type comes
+		// from the fact that the pointer may points
+		// to an anonymous struct field that should
+		// still be serialized as part of the struct,
+		// or has the omitempty option.
+		if e.typ.Kind() != reflect.Struct {
+			_, err := w.WriteString("null")
+			return err
+		}
 	}
-	if typ.Kind() == reflect.Ptr {
+	isPtr := typ.Kind() == reflect.Ptr
+	if isPtr {
 		typ = typ.Elem()
 	}
 	if typ != e.typ {
 		return fmt.Errorf("for %s encoder, incompatible value type: %v", e.typ, typ)
 	}
 	es := newState()
+	es.inputPtr = isPtr
 
 	// Apply options to state.
 	for _, o := range opts {

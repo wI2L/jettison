@@ -17,13 +17,30 @@ const validFieldNameChars = "!#$%&()*+-./:<=>?@[]^_{|}~ "
 type field struct {
 	name      string
 	keyBytes  []byte
+	sf        reflect.StructField
 	typ       reflect.Type
 	index     []int
-	sf        reflect.StructField
 	tag       bool
 	quoted    bool
 	omitEmpty bool
-	offset    uintptr
+
+	// offsetSeq is the sequence of offsets
+	// between top-level pointer to field.
+	offsetSeq []uintptr
+
+	// indirSeq is the sequence of pointer
+	// indirections to follow to reach the
+	// field through one or more anonymous
+	// parent fields.
+	indirSeq []bool
+
+	// countSeq represents the number of
+	// fields in each parent struct.
+	countSeq []int
+
+	// pfc represents the number of fields
+	// of the field's parent struct.
+	pfc int
 }
 
 // byIndex sorts a list of fields by index sequence.
@@ -68,20 +85,10 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 	// Iterate over the list of fields scanned
 	// and add an instruction to encode each.
 	for _, f := range fields {
-		if f.sf.Anonymous {
-			// Named embedded structs are encoded as
-			// a field of the current object.
-			instr, err := newEmbeddedStructFieldInstr(f)
-			if err != nil {
-				return nil, err
-			}
-			instrs = append(instrs, instr)
-			continue
-		}
 		instr, err := newStructFieldInstr(f)
 		if err != nil {
 			return nil, &UnsupportedTypeError{f.typ,
-				fmt.Sprintf("field %s of struct %s", f.sf.Name, t),
+				fmt.Sprintf("field %s of struct %s", f.name, t),
 			}
 		}
 		instrs = append(instrs, instr)
@@ -128,29 +135,88 @@ func newStructFieldInstr(f field) (Instruction, error) {
 			instr = wrapQuoteInstr(instr)
 		}
 	}
+	// The length of sequences must be equal.
+	if len(f.indirSeq) != len(f.offsetSeq) {
+		return nil, fmt.Errorf("inconsistent indirection seq and offset seq: %d and %d",
+			len(f.indirSeq), len(f.offsetSeq),
+		)
+	}
+	// If f is an embedded pointer field and there
+	// is no other fields in the struct, the received
+	// pointer points to the field itself.
+	if f.sf.Anonymous && f.pfc == 1 && isPtr {
+		return wrapAnonymousFieldInstr(instr, f), nil
+	}
+	// Wrap resolved type instruction to handle the
+	// omitempty option and writing the field's name.
+	// The last offset of the sequence is used, which
+	// correspond to that of the field.
+	instr = wrapStructFieldInstr(instr, f, isPtr, ft)
+
+	if len(f.indirSeq) > 0 {
+		return indirInstr(instr, f), nil
+	}
+	// Nothing to follow.
+	return instr, nil
+}
+
+// wrapAnonymousFieldInstr returns a wrapped instruction
+// of instr that encode a solitary anonymous field.
+func wrapAnonymousFieldInstr(instr Instruction, f field) Instruction {
+	var (
+		key  = f.keyBytes
+		omit = f.omitEmpty
+	)
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		// Input value may be a typed nil.
+		if omit && p == nilptr {
+			return nil
+		}
+		// Dereference if the input eface given to
+		// Encode holds a pointer.
+		if p != nilptr && es.inputPtr {
+			p = *(*unsafe.Pointer)(p)
+			if omit && p == nilptr {
+				return nil
+			}
+		}
+		if err := writeFieldKey(key, w, es); err != nil {
+			return err
+		}
+		if p == nilptr {
+			_, err := w.WriteString("null")
+			return err
+		}
+		return instr(p, w, es)
+	}
+}
+
+func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Type) Instruction {
 	// Create a copy of the variables needed
 	// in the instruction to avoid keeping a
 	// reference to f.
 	var (
 		key    = f.keyBytes
-		offset = f.offset
 		omit   = f.omitEmpty
+		offset = f.sf.Offset
 	)
 	if isPtr {
-		return func(v unsafe.Pointer, w Writer, es *encodeState) error {
-			p := unsafe.Pointer(*(*uintptr)(unsafe.Pointer(uintptr(v) + offset)))
-			if omit && p == nil {
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			if p != nilptr {
+				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(uintptr(p) + offset)))
+			}
+			if omit && p == nilptr {
 				return nil
 			}
 			if err := writeFieldKey(key, w, es); err != nil {
 				return err
 			}
-			if p == nil {
+			if p == nilptr {
 				_, err := w.WriteString("null")
 				return err
 			}
 			return instr(p, w, es)
-		}, nil
+		}
 	}
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
 		p := unsafe.Pointer(uintptr(v) + offset)
@@ -161,22 +227,31 @@ func newStructFieldInstr(f field) (Instruction, error) {
 			return err
 		}
 		return instr(p, w, es)
-	}, nil
+	}
 }
 
-// newEmbeddedStructFieldInstr returns a new instruction
-// to encode an embedded struct field.
-func newEmbeddedStructFieldInstr(f field) (Instruction, error) {
-	instr, err := cachedTypeInstr(f.sf.Type)
-	if err != nil {
-		return nil, err
-	}
+func indirInstr(instr Instruction, f field) Instruction {
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		if err := writeFieldKey(f.keyBytes, w, es); err != nil {
-			return err
+		if p == nilptr {
+			return nil
 		}
-		return instr(unsafe.Pointer(uintptr(p)+f.offset), w, es)
-	}, nil
+		for i, indir := range f.indirSeq {
+			p = unsafe.Pointer(uintptr(p) + f.offsetSeq[i])
+			if indir {
+				if i == len(f.indirSeq)-1 && f.countSeq[0] == 1 && !es.inputPtr {
+					break
+				}
+				if p != nilptr {
+					p = *(*unsafe.Pointer)(p)
+				}
+				if p == nilptr {
+					return nil
+				}
+				continue
+			}
+		}
+		return instr(p, w, es)
+	}
 }
 
 type typeCount map[reflect.Type]int
@@ -291,7 +366,8 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 		index[len(f.index)] = i
 
 		ft := sf.Type
-		if ft.Name() == "" && ft.Kind() == reflect.Ptr {
+		isPtr := ft.Kind() == reflect.Ptr
+		if ft.Name() == "" && isPtr {
 			ft = ft.Elem()
 		}
 		// If the field is a named embedded struct or a simple
@@ -312,7 +388,10 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 				omitEmpty: opts.Contains("omitempty"),
 				quoted:    opts.Contains("string") && isPrimitiveType(ft),
 				keyBytes:  []byte("," + strconv.Quote(name) + ":"),
-				offset:    f.offset + sf.Offset,
+				offsetSeq: f.offsetSeq,
+				indirSeq:  f.indirSeq,
+				countSeq:  f.countSeq,
+				pfc:       f.typ.NumField(),
 			})
 			if cnt[f.typ] > 1 {
 				fields = append(fields, fields[len(fields)-1])
@@ -324,10 +403,12 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 		ncnt[ft]++
 		if ncnt[ft] == 1 {
 			next = append(next, field{
-				name:   ft.Name(),
-				index:  index,
-				typ:    ft,
-				offset: f.offset + sf.Offset,
+				typ:       ft,
+				name:      ft.Name(),
+				index:     index,
+				offsetSeq: append(f.offsetSeq, sf.Offset),
+				indirSeq:  append(f.indirSeq, isPtr),
+				countSeq:  append(f.countSeq, f.typ.NumField()),
 			})
 		}
 	}
