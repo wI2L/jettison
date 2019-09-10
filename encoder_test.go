@@ -3,6 +3,7 @@ package jettison
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -342,19 +344,36 @@ func TestCompositeMapValue(t *testing.T) {
 	}
 }
 
-type structTextMarshaler struct {
-	L string
-	R string
-}
+type (
+	intTextMarshaler    int
+	intPtrTextMarshaler int
+	strJSONMarshaler    string
+	strPtrJSONMarshaler string
+)
 
-func (stm structTextMarshaler) MarshalText() ([]byte, error) {
-	return []byte(fmt.Sprintf("%s:%s", stm.L, stm.R)), nil
-}
-
-type intMarshaler int
-
-func (im intMarshaler) MarshalText() ([]byte, error) {
+func (im intTextMarshaler) MarshalText() ([]byte, error) {
 	return []byte(strconv.Itoa(int(im))), nil
+}
+func (im *intPtrTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(int(*im))), nil
+}
+func (sm strJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(sm))), nil
+}
+func (sm *strPtrJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(*sm))), nil
+}
+
+type (
+	structTextMarshaler    struct{ L, R string }
+	structPtrTextMarshaler struct{ L, R string }
+)
+
+func (sm structTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%s:%s", sm.L, sm.R)), nil
+}
+func (spm *structPtrTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%s:%s", spm.L, spm.R)), nil
 }
 
 // TestTextMarshalerMapKey tests that a map with
@@ -362,10 +381,13 @@ func (im intMarshaler) MarshalText() ([]byte, error) {
 // can be encoded.
 func TestTextMarshalerMapKey(t *testing.T) {
 	var (
-		im intMarshaler = 42
-		ip              = &net.IP{127, 0, 0, 1}
+		im  intTextMarshaler    = 42
+		ipm intPtrTextMarshaler = 84
+		sm                      = structTextMarshaler{L: "A", R: "B"}
+		spm                     = structPtrTextMarshaler{L: "A", R: "B"}
+		ip                      = &net.IP{127, 0, 0, 1}
 	)
-	testdata := []interface{}{
+	valid := []interface{}{
 		map[time.Time]string{
 			time.Now(): "now",
 			{}:         "",
@@ -378,14 +400,27 @@ func TestTextMarshalerMapKey(t *testing.T) {
 			// the results cannot be compared.
 			// nil: "",
 		},
-		map[structTextMarshaler]string{
-			{L: "A", R: "B"}: "ab",
+		map[structTextMarshaler]string{sm: "ab"},
+		map[*structTextMarshaler]string{
+			&sm: "ab",
+			// nil: "",
 		},
-		map[*intMarshaler]string{
+		map[*structPtrTextMarshaler]string{
+			&spm: "ab",
+			// nil: "",
+		},
+		map[intTextMarshaler]string{im: "42"},
+		map[*intTextMarshaler]string{
 			&im: "42",
+			// nil: "",
+		},
+		map[intPtrTextMarshaler]string{ipm: "42"},
+		map[*intPtrTextMarshaler]string{
+			&ipm: "42",
+			// nil: "",
 		},
 	}
-	for _, tt := range testdata {
+	for _, tt := range valid {
 		enc, err := NewEncoder(tt)
 		if err != nil {
 			t.Error(err)
@@ -396,6 +431,32 @@ func TestTextMarshalerMapKey(t *testing.T) {
 		}
 		if !equalStdLib(t, tt, buf.Bytes()) {
 			t.Error("expected outputs to be equal")
+		}
+	}
+}
+
+func TestInvalidTextMarshalerMapKey(t *testing.T) {
+	for _, tt := range []interface{}{
+		// Non-pointer value of a pointer-receiver
+		// type isn't a valid map key type.
+		map[structPtrTextMarshaler]string{
+			{L: "A", R: "B"}: "ab",
+		},
+	} {
+		enc, err := NewEncoder(tt)
+		if err != nil {
+			t.Error(err)
+		}
+		var buf bytes.Buffer
+		err = enc.Encode(tt, &buf)
+		_, jsonErr := json.Marshal(tt)
+
+		// Trim the prefix of the JSON error string,
+		// and compare with the error returned by
+		// Jettison.
+		s := strings.TrimPrefix(jsonErr.Error(), "json: ")
+		if s != err.Error() {
+			t.Errorf("got %s, want %s", s, err.Error())
 		}
 	}
 }
@@ -1195,34 +1256,78 @@ func TestRecursiveType(t *testing.T) {
 	}
 }
 
-// TestJSONMarshaler tests that a type that implements
+// TestJSONMarshaler tests that a type implementing
 // the json.Marshaler interface is encoded using the
 // result of its MarshalJSON method call result.
+// Because the types big.Int and time.Time also
+// implements the encoding.TextMarshaler interface,
+// the test ensures that MarshalJSON has priority.
 func TestJSONMarshaler(t *testing.T) {
-	// Because the type big.Int also implements
-	// the encoding.TextMarshaler interface, the
-	// test ensure that MarshalJSON has priority.
+	// T = Non-pointer receiver of composite type.
+	// S = Non-pointer receiver of primitive type.
+	// I = Pointer receiver of composite type.
+	// P = Pointer receiver of primitive type.
 	type x struct {
-		B1 big.Int  `json:"b1"`
-		B2 big.Int  `json:"b2,omitempty"`
-		B3 *big.Int `json:"b3"`
-		B4 *big.Int `json:"b4,omitempty"`
+		T1 time.Time            `json:"t1"`
+		T2 time.Time            `json:"t2,omitempty"`
+		T3 *time.Time           `json:"t3"`
+		T4 *time.Time           `json:"t4"`           // nil
+		T5 *time.Time           `json:"t5,omitempty"` // nil
+		S1 strJSONMarshaler     `json:"s1,omitempty"`
+		S2 strJSONMarshaler     `json:"s2,omitempty"`
+		S3 strJSONMarshaler     `json:"s3"`
+		S4 *strJSONMarshaler    `json:"s4"`
+		S5 *strJSONMarshaler    `json:"s5"`           // nil
+		S6 *strJSONMarshaler    `json:"s6,omitempty"` // nil
+		I1 big.Int              `json:"i1"`
+		I2 big.Int              `json:"i2,omitempty"`
+		I3 *big.Int             `json:"i3"`
+		I4 *big.Int             `json:"i4"`           // nil
+		I5 *big.Int             `json:"i5,omitempty"` // nil
+		P1 strPtrJSONMarshaler  `json:"p1,omitempty"`
+		P2 strPtrJSONMarshaler  `json:"p2,omitempty"`
+		P3 strPtrJSONMarshaler  `json:"p3"`
+		P4 *strPtrJSONMarshaler `json:"p4"`
+		P5 *strPtrJSONMarshaler `json:"p5"`           // nil
+		P6 *strPtrJSONMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(x{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	xx := &x{
-		B1: *big.NewInt(math.MaxInt64),
-		B3: big.NewInt(math.MaxInt64),
-		B4: nil,
+	var (
+		now = time.Now()
+		sm  = strJSONMarshaler("Loreum")
+		spm = strPtrJSONMarshaler("Loreum")
+	)
+	xx := x{
+		T1: now,
+		T3: &now,
+		S1: "Loreum",
+		S4: &sm,
+		I1: *big.NewInt(math.MaxInt64),
+		I3: big.NewInt(math.MaxInt64),
+		P1: "Loreum",
+		P4: &spm,
 	}
-	var buf bytes.Buffer
-	if err := enc.Encode(xx, &buf); err != nil {
-		t.Error(err)
+	testdata := []struct {
+		name string
+		val  interface{}
+	}{
+		{"non-pointer", xx},
+		{"pointer", &xx},
 	}
-	if !equalStdLib(t, xx, buf.Bytes()) {
-		t.Error("expected outputs to be equal")
+	for _, tt := range testdata {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := enc.Encode(tt.val, &buf); err != nil {
+				t.Error(err)
+			}
+			if !equalStdLib(t, tt.val, buf.Bytes()) {
+				t.Error("expected outputs to be equal")
+			}
+		})
 	}
 }
 
@@ -1230,27 +1335,127 @@ func TestJSONMarshaler(t *testing.T) {
 // the encoding.TextMarshaler interface encodes to a
 // quoted string of its MashalText method call result.
 func TestTextMarshaler(t *testing.T) {
+	// S = Non-pointer receiver of composite type.
+	// I = Non-pointer receiver of primitive type.
+	// F = Pointer receiver of composite kind.
+	// P = Pointer receiver of primitive tyoe.
 	type x struct {
-		IP1 net.IP  `json:"ip1"`
-		IP2 net.IP  `json:"ip2,omitempty"`
-		IP3 *net.IP `json:"ip3"`
-		IP4 *net.IP `json:"ip4"`
-		IP5 *net.IP `json:"ip5,omitempty"`
+		S1 net.IP               `json:"s1"`
+		S2 net.IP               `json:"s2,omitempty"`
+		S3 *net.IP              `json:"s3"`
+		S4 *net.IP              `json:"s4"`           // nil
+		S5 *net.IP              `json:"s5,omitempty"` // nil
+		I1 intTextMarshaler     `json:"i1,omitempty"`
+		I2 intTextMarshaler     `json:"i2,omitempty"`
+		I3 intTextMarshaler     `json:"i3"`
+		I4 *intTextMarshaler    `json:"i4"`
+		I5 *intTextMarshaler    `json:"i5"`           // nil
+		I6 *intTextMarshaler    `json:"i6,omitempty"` // nil
+		F1 big.Float            `json:"f1"`
+		F2 big.Float            `json:"f2,omitempty"`
+		F3 *big.Float           `json:"f3"`
+		F4 *big.Float           `json:"f4"`           // nil
+		F5 *big.Float           `json:"f5,omitempty"` // nil
+		P1 intPtrTextMarshaler  `json:"p1,omitempty"`
+		P2 intPtrTextMarshaler  `json:"p2,omitempty"`
+		P3 intPtrTextMarshaler  `json:"p3"`
+		P4 *intPtrTextMarshaler `json:"p4"`
+		P5 *intPtrTextMarshaler `json:"p5"`           // nil
+		P6 *intPtrTextMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(x{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	xx := &x{
-		IP1: net.IP{192, 168, 0, 1},
-		IP3: &net.IP{127, 0, 0, 1},
+	var (
+		im  = intTextMarshaler(42)
+		ipm = intPtrTextMarshaler(42)
+	)
+	xx := x{
+		S1: net.IP{192, 168, 0, 1},
+		S3: &net.IP{127, 0, 0, 1},
+		I1: 42,
+		I4: &im,
+		F1: *big.NewFloat(math.MaxFloat64),
+		F3: big.NewFloat(math.MaxFloat64),
+		P1: 42,
+		P4: &ipm,
 	}
-	var buf bytes.Buffer
-	if err := enc.Encode(xx, &buf); err != nil {
-		t.Error(err)
+	testdata := []struct {
+		name string
+		val  interface{}
+	}{
+		{"non-pointer", xx},
+		{"pointer", &xx},
 	}
-	if !equalStdLib(t, xx, buf.Bytes()) {
-		t.Error("expected outputs to be equal")
+	for _, tt := range testdata {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := enc.Encode(tt.val, &buf); err != nil {
+				t.Error(err)
+			}
+			if !equalStdLib(t, tt.val, buf.Bytes()) {
+				t.Error("expected outputs to be equal")
+			}
+		})
+	}
+}
+
+type (
+	nilJSONMarshaler string
+	nilTextMarshaler string
+)
+
+func (nm *nilJSONMarshaler) MarshalJSON() ([]byte, error) {
+	if nm == nil {
+		return []byte(strconv.Quote("Loreum")), nil
+	}
+	return nil, nil
+}
+
+func (nm *nilTextMarshaler) MarshalText() ([]byte, error) {
+	if nm == nil {
+		return []byte("Loreum"), nil
+	}
+	return nil, nil
+}
+
+// TestNilMarshaler tests that even if a nil interface
+// value is passed in, as long as it implements MarshalJSON,
+// it should be marshaled.
+func TestNilMarshaler(t *testing.T) {
+	testdata := []struct {
+		v interface{}
+	}{
+		{v: struct{ M json.Marshaler }{M: nil}},
+		{v: struct{ M json.Marshaler }{(*nilJSONMarshaler)(nil)}},
+		{v: struct{ M interface{} }{(*nilJSONMarshaler)(nil)}},
+		{v: struct{ M *nilJSONMarshaler }{M: nil}},
+		{v: json.Marshaler((*nilJSONMarshaler)(nil))},
+		{v: (*nilJSONMarshaler)(nil)},
+
+		// FIXME: Panic with encoding/json.
+		// {v: struct{ M encoding.TextMarshaler }{M: nil}},
+
+		{v: struct{ M encoding.TextMarshaler }{(*nilTextMarshaler)(nil)}},
+		{v: struct{ M interface{} }{(*nilTextMarshaler)(nil)}},
+		{v: struct{ M *nilTextMarshaler }{M: nil}},
+		{v: encoding.TextMarshaler((*nilTextMarshaler)(nil))},
+		{v: (*nilTextMarshaler)(nil)},
+	}
+	for _, tt := range testdata {
+		enc, err := NewEncoder(tt.v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if err := enc.Encode(tt.v, &buf); err != nil {
+			t.Fatal(err)
+		}
+		if !equalStdLib(t, tt.v, buf.Bytes()) {
+			t.Error("expected outputs to be equal")
+		}
 	}
 }
 

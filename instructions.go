@@ -76,7 +76,7 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 	}
 	// Generate the real instruction and replace
 	// the indirect func with it.
-	ins, err = newTypeInstr(t)
+	ins, err = newTypeInstr(t, false)
 	if err != nil {
 		// Remove the indirect function inserted
 		// previously if the type is unsupported
@@ -94,7 +94,10 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 // newTypeInstr returns the instruction to encode t.
 // It creates a new Encoder instance to encode some
 // composite types, such as struct and map.
-func newTypeInstr(t reflect.Type) (Instruction, error) {
+func newTypeInstr(t reflect.Type, skipSpecial bool) (Instruction, error) {
+	if skipSpecial {
+		goto def
+	}
 	// Special types must be checked first, because a Duration
 	// is an int64, json.Number is a string, and both would be
 	// interpreted as a primitive.
@@ -106,6 +109,7 @@ func newTypeInstr(t reflect.Type) (Instruction, error) {
 	if instr := marshalerInstr(t); instr != nil {
 		return instr, nil
 	}
+def:
 	if isPrimitiveType(t) {
 		return primitiveInstr(t.Kind()), nil
 	}
@@ -155,7 +159,7 @@ func marshalerInstr(t reflect.Type) Instruction {
 	}
 	if t.Kind() != reflect.Ptr {
 		if reflect.PtrTo(t).Implements(jsonMarshalerType) {
-			return newJSONMarshalerInstr(t)
+			return newAddrJSONMarshalerInstr(t)
 		}
 	}
 	if t.Implements(textMarshalerType) {
@@ -163,31 +167,47 @@ func marshalerInstr(t reflect.Type) Instruction {
 	}
 	if t.Kind() != reflect.Ptr {
 		if reflect.PtrTo(t).Implements(textMarshalerType) {
-			return newTextMarshalerInstr(t)
+			return newAddrTextMarshalerInstr(t)
 		}
 	}
 	return nil
 }
 
 // newJSONMarshalerInstr returns an instruction to
-// encode the given type using its MarshalJSON method.
+// encode a type which have a pointer receiver, by
+// using its MarshalJSON method.
 func newJSONMarshalerInstr(t reflect.Type) Instruction {
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		v := reflect.NewAt(t, p)
-		ev := v.Elem()
+		v := reflect.NewAt(t, p).Elem()
 
-		// Indirect v if it points to a value
-		// having a pointer-receiver type.
-		if ev.Kind() == reflect.Ptr {
-			v = ev
+		m, ok := v.Interface().(json.Marshaler)
+		if !ok {
+			_, err := w.WriteString("null")
+			return err
 		}
-		// If the value is nil, the MarshalJSON
-		// method cannot be invoked, and it encodes
-		// to an empty string.
-		if v.IsNil() {
-			return nil
+		b, err := m.MarshalJSON()
+		if err != nil {
+			return &MarshalerError{t, err}
 		}
-		m, _ := v.Interface().(json.Marshaler)
+		_, err = w.Write(b)
+		return err
+	}
+}
+
+// newAddrJSONMarshalerInstr returns an instruction to
+// encode the a type which have a non-pointer receiver,
+// by using its MarshalJSON method.
+func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
+	// Fallback instruction for non-addressable values.
+	finstr, _ := newTypeInstr(t, true)
+
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p)
+
+		if !es.addressable && !es.inputPtr {
+			return finstr(p, w, es)
+		}
+		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
 			return &MarshalerError{t, err}
@@ -203,21 +223,37 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 // invocation of the method.
 func newTextMarshalerInstr(t reflect.Type) Instruction {
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		v := reflect.NewAt(t, p)
-		ev := v.Elem()
+		v := reflect.NewAt(t, p).Elem()
 
-		// Indirect v if it points to a value
-		// having a pointer-receiver type.
-		if ev.Kind() == reflect.Ptr {
-			v = ev
+		m := v.Interface().(encoding.TextMarshaler)
+		b, err := m.MarshalText()
+		if err != nil {
+			return &MarshalerError{t, err}
 		}
-		// If the value is nil, the MarshalText
-		// method cannot be invoked, and it encodes
-		// to an empty string.
-		if v.IsNil() {
-			return nil
+		if err := w.WriteByte('"'); err != nil {
+			return err
 		}
-		m, _ := v.Interface().(encoding.TextMarshaler)
+		if err := writeEscapedBytes(b, w, es); err != nil {
+			return err
+		}
+		return w.WriteByte('"')
+	}
+}
+
+// newAddrTextMarshalerInstr returns an instruction to
+// encode the a type which have a non-pointer receiver,
+// by using its MarshalText method.
+func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
+	// Fallback instruction for non-addressable values.
+	finstr, _ := newTypeInstr(t, true)
+
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p)
+
+		if !es.addressable && !es.inputPtr {
+			return finstr(p, w, es)
+		}
+		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
 			return &MarshalerError{t, err}

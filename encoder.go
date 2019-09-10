@@ -131,6 +131,8 @@ type encodeState struct {
 	// field of an object has been written.
 	firstField bool
 
+	addressable bool
+
 	// Runtime options.
 	// All are optin-in only or have default
 	// values to comply with the std library

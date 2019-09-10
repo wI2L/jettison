@@ -151,13 +151,27 @@ func newStructFieldInstr(f field) (Instruction, error) {
 	// omitempty option and writing the field's name.
 	// The last offset of the sequence is used, which
 	// correspond to that of the field.
-	instr = wrapStructFieldInstr(instr, f, isPtr, ft)
+	instr = wrapSetAddressable(wrapStructFieldInstr(instr, f, isPtr, ft), isPtr)
 
 	if len(f.indirSeq) > 0 {
 		return indirInstr(instr, f), nil
 	}
 	// Nothing to follow.
 	return instr, nil
+}
+
+// wrapSetAddressable returns a wrapped instruction
+// of instr that set whether the field is addressable.
+func wrapSetAddressable(instr Instruction, canAddr bool) Instruction {
+	if canAddr {
+		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+			es.addressable = canAddr
+			err := instr(p, w, es)
+			es.addressable = false
+			return err
+		}
+	}
+	return instr
 }
 
 // wrapAnonymousFieldInstr returns a wrapped instruction
