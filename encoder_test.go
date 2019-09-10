@@ -1242,8 +1242,131 @@ func TestStringEscaping(t *testing.T) {
 			t.Error(err)
 		}
 		if s := buf.String(); s != tt.Want {
-			t.Errorf("got %s, want %s", s, tt.Want)
+			t.Errorf("got %#q, want %#q", s, tt.Want)
 		}
+	}
+}
+
+func TestBytesEscaping(t *testing.T) {
+	testdata := []struct {
+		in, out string
+	}{
+		{"\x00", `"\u0000"`},
+		{"\x01", `"\u0001"`},
+		{"\x02", `"\u0002"`},
+		{"\x03", `"\u0003"`},
+		{"\x04", `"\u0004"`},
+		{"\x05", `"\u0005"`},
+		{"\x06", `"\u0006"`},
+		{"\x07", `"\u0007"`},
+		{"\x08", `"\b"`},
+		{"\x09", `"\t"`},
+		{"\x0a", `"\n"`},
+		{"\x0b", `"\u000b"`},
+		{"\x0c", `"\f"`},
+		{"\x0d", `"\r"`},
+		{"\x0e", `"\u000e"`},
+		{"\x0f", `"\u000f"`},
+		{"\x10", `"\u0010"`},
+		{"\x11", `"\u0011"`},
+		{"\x12", `"\u0012"`},
+		{"\x13", `"\u0013"`},
+		{"\x14", `"\u0014"`},
+		{"\x15", `"\u0015"`},
+		{"\x16", `"\u0016"`},
+		{"\x17", `"\u0017"`},
+		{"\x18", `"\u0018"`},
+		{"\x19", `"\u0019"`},
+		{"\x1a", `"\u001a"`},
+		{"\x1b", `"\u001b"`},
+		{"\x1c", `"\u001c"`},
+		{"\x1d", `"\u001d"`},
+		{"\x1e", `"\u001e"`},
+		{"\x1f", `"\u001f"`},
+	}
+	for _, tt := range testdata {
+		enc, err := NewEncoder(tt.in)
+		if err != nil {
+			t.Error(err)
+		}
+		var buf bytes.Buffer
+		if err := enc.Encode(tt.in, &buf); err != nil {
+			t.Error(err)
+			continue
+		}
+		if s := buf.String(); s != tt.out {
+			t.Errorf("got %#q, want %#q", s, tt.out)
+		}
+	}
+}
+
+// TestTaggedFieldDominates tests that a field with
+// a tag dominates untagged fields.
+// Taken from encoding/json.
+func TestTaggedFieldDominates(t *testing.T) {
+	type (
+		A struct{ S string }
+		D struct {
+			XXX string `json:"S"`
+		}
+		Y struct {
+			A
+			D
+		}
+	)
+	y := Y{A{"Loreum"}, D{"Ipsum"}}
+
+	enc, err := NewEncoder(Y{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := enc.Encode(y, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !equalStdLib(t, y, buf.Bytes()) {
+		t.Error("expected outputs to be equal")
+	}
+}
+
+// TestDuplicatedFieldDisappears tests that duplicate
+// field at the same level of embedding are ignored.
+func TestDuplicatedFieldDisappears(t *testing.T) {
+	type (
+		A struct{ S string }
+		C struct{ S string }
+		D struct {
+			XXX string `json:"S"`
+		}
+		Y struct {
+			A
+			D
+		}
+		// There are no tags here,
+		// so S should not appear.
+		Z struct {
+			A
+			C
+			// Y contains a tagged S field through B,
+			// it should not dominate.
+			Y
+		}
+	)
+	z := Z{
+		A{"Loreum"},
+		C{"Ipsum"},
+		Y{A{"Sit"}, D{"Amet"}},
+	}
+	enc, err := NewEncoder(Z{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := enc.Encode(z, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !equalStdLib(t, z, buf.Bytes()) {
+		t.Error("expected outputs to be equal")
 	}
 }
 

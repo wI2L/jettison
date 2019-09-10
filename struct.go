@@ -272,6 +272,7 @@ func dominantField(fields []field) (field, bool) {
 func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []field) {
 	for i := 0; i < f.typ.NumField(); i++ {
 		sf := f.typ.Field(i)
+
 		if !shouldEncodeField(sf) {
 			continue
 		}
@@ -296,17 +297,18 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 		// If the field is a named embedded struct or a simple
 		// field, record it and its index sequence.
 		if name != "" || !sf.Anonymous || ft.Kind() != reflect.Struct {
+			tagged := name != ""
 			// If a name is not present in the tag,
 			// use the struct field's name instead.
 			if name == "" {
 				name = sf.Name
 			}
 			fields = append(fields, field{
-				name:      name,
 				typ:       ft,
-				tag:       name != "",
-				index:     index,
 				sf:        sf,
+				name:      name,
+				tag:       tagged,
+				index:     index,
 				omitEmpty: opts.Contains("omitempty"),
 				quoted:    opts.Contains("string") && isPrimitiveType(ft),
 				keyBytes:  []byte("," + strconv.Quote(name) + ":"),
