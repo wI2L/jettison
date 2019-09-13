@@ -42,13 +42,19 @@ The package aims to have a behavior similar to that of the standard library for 
 
 First, create a new encoder for the type that needs to be marshaled, and compile the instructions set.
 ```go
-import "github.com/wI2L/jettison"
+import (
+   "bytes"
+   "fmt"
+   "reflect"
+
+   "github.com/wI2L/jettison"
+)
 
 type x struct {
     A string `json:"a,omitempty"`
     B int    `json:"b"`
 }
-enc, err := jettison.NewEncoder(x{})
+enc, err := jettison.NewEncoder(reflect.TypeOf(x{}))
 if err != nil {
     // handle error
 }
@@ -98,7 +104,7 @@ Opt-in options are available to customize the behavior of the package. The third
 
 ### Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
+> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
 go version go1.12.5 linux/amd64
 
 ##### Simple

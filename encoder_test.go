@@ -35,7 +35,7 @@ func TestNewEncoderNilInterface(t *testing.T) {
 // the one for which is was created returns an error.
 func TestEncodeWithIncompatibleType(t *testing.T) {
 	type x struct{}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestUnsupportedValueError(t *testing.T) {
 // TestNilValues tests the behavior of an encoder's
 // Encode method for typed and untyped nil values.
 func TestNilValues(t *testing.T) {
-	enc, err := NewEncoder(int(0))
+	enc, err := NewEncoder(reflect.TypeOf(int(0)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +97,8 @@ func TestNilValues(t *testing.T) {
 // types can be encoded.
 func TestPrimitiveTypes(t *testing.T) {
 	testdata := []struct {
-		Iface interface{}
-		Str   string
+		Val interface{}
+		Str string
 	}{
 		{bool(true), "true"},
 		{bool(false), "false"},
@@ -115,12 +115,12 @@ func TestPrimitiveTypes(t *testing.T) {
 		{(*int)(nil), "null"},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.Iface)
+		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
 			t.Error(err)
 		}
 		var buf bytes.Buffer
-		if err := enc.Encode(tt.Iface, &buf); err != nil {
+		if err := enc.Encode(tt.Val, &buf); err != nil {
 			t.Error(err)
 		}
 		if s := buf.String(); s != tt.Str {
@@ -133,8 +133,8 @@ func TestPrimitiveTypes(t *testing.T) {
 // types can be encoded.
 func TestCompositeTypes(t *testing.T) {
 	testdata := []struct {
-		Iface interface{}
-		Str   string
+		Val interface{}
+		Str string
 	}{
 		{[]uint{}, "[]"},
 		{[]int{1, 2, 3}, "[1,2,3]"},
@@ -148,12 +148,12 @@ func TestCompositeTypes(t *testing.T) {
 		{(map[string]int)(nil), "null"},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.Iface)
+		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
 			t.Error(err)
 		}
 		var buf bytes.Buffer
-		if err := enc.Encode(tt.Iface, &buf); err != nil {
+		if err := enc.Encode(tt.Val, &buf); err != nil {
 			t.Error(err)
 		}
 		if s := buf.String(); s != tt.Str {
@@ -172,7 +172,7 @@ func TestUnsupportedTypes(t *testing.T) {
 		complex128(0),
 	}
 	for _, tt := range testdata {
-		enc, _ := NewEncoder(tt)
+		enc, _ := NewEncoder(reflect.TypeOf(tt))
 		err := enc.Compile()
 		if err != nil {
 			e, ok := err.(*UnsupportedTypeError)
@@ -196,7 +196,7 @@ func TestUnsupportedCompositeElemTypes(t *testing.T) {
 		[]chan int{},
 		[2]complex64{},
 	} {
-		enc, _ := NewEncoder(tt)
+		enc, _ := NewEncoder(reflect.TypeOf(tt))
 		err := enc.Compile()
 		if err != nil {
 			e, ok := err.(*UnsupportedTypeError)
@@ -230,7 +230,7 @@ func TestMap(t *testing.T) {
 		{map[string]int{"c": 3, "a": 1, "b": 2}, "", true, false},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.Val)
+		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
 			t.Error(err)
 		}
@@ -278,7 +278,7 @@ func TestSlice(t *testing.T) {
 		{[]string{"a", "b", "c"}, `["a","b","c"]`, true},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.Val)
+		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -330,7 +330,7 @@ func TestCompositeMapValue(t *testing.T) {
 			"6": &x{A: "Sit Amet", B: 256, C: true},
 		},
 	} {
-		enc, err := NewEncoder(tt)
+		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -421,7 +421,7 @@ func TestTextMarshalerMapKey(t *testing.T) {
 		},
 	}
 	for _, tt := range valid {
-		enc, err := NewEncoder(tt)
+		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
 			t.Error(err)
 		}
@@ -443,7 +443,7 @@ func TestInvalidTextMarshalerMapKey(t *testing.T) {
 			{L: "A", R: "B"}: "ab",
 		},
 	} {
-		enc, err := NewEncoder(tt)
+		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
 			t.Error(err)
 		}
@@ -484,7 +484,7 @@ func TestPrimitiveStructFieldTypes(t *testing.T) {
 		H  string  `json:"-,"` // use "-" as key
 		i  string
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestPrimitiveStructFieldPointerTypes(t *testing.T) {
 		F *float64 `json:"f"`
 		g *int64
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +558,7 @@ func TestUnsupportedStructFieldTypes(t *testing.T) {
 	type x struct {
 		C chan struct{}
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestStructFieldName(t *testing.T) {
 		F  int    `json:"虚拟"`
 		Aβ int
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestStructFieldOmitempty(t *testing.T) {
 		K1 []string    `json:"k1,omitempty"`
 		K2 []string    `json:"k2,omitempty"`
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestQuotedStructField(t *testing.T) {
 		D  float32 `json:",string"`
 		E  string  `json:"e,string"`
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func TestCompositeStructFieldTypes(t *testing.T) {
 		U6 interface{}            `json:"u6"`
 		u7 interface{}
 	}
-	enc, err := NewEncoder(&x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,7 +836,7 @@ func TestEmbeddedStructs(t *testing.T) {
 		z `json:",omitempty"`
 		*x1
 	}
-	enc, err := NewEncoder(x1{})
+	enc, err := NewEncoder(reflect.TypeOf(x1{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,7 +869,7 @@ func TestEmbeddedStructs(t *testing.T) {
 		A int16 `json:"a"`
 		v `json:"v"`
 	}
-	enc, err = NewEncoder(x2{})
+	enc, err = NewEncoder(reflect.TypeOf(x2{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1167,7 +1167,7 @@ func TestAnonymousFields(t *testing.T) {
 					label = "pointer"
 				}
 				t.Run(label, func(t *testing.T) {
-					enc, err := NewEncoder(input)
+					enc, err := NewEncoder(reflect.TypeOf(input))
 					if err != nil {
 						t.Error(err)
 					}
@@ -1208,7 +1208,7 @@ func TestEmbeddedTypes(t *testing.T) {
 		C3
 		c4 `json:"c4"`
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1243,7 +1243,7 @@ func TestRecursiveType(t *testing.T) {
 		A: "Loreum",
 		X: &x{A: "Ipsem"},
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1291,7 +1291,7 @@ func TestJSONMarshaler(t *testing.T) {
 		P5 *strPtrJSONMarshaler `json:"p5"`           // nil
 		P6 *strPtrJSONMarshaler `json:"p6,omitempty"` // nil
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1363,7 +1363,7 @@ func TestTextMarshaler(t *testing.T) {
 		P5 *intPtrTextMarshaler `json:"p5"`           // nil
 		P6 *intPtrTextMarshaler `json:"p6,omitempty"` // nil
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1445,7 +1445,7 @@ func TestNilMarshaler(t *testing.T) {
 		{v: (*nilTextMarshaler)(nil)},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.v)
+		enc, err := NewEncoder(reflect.TypeOf(tt.v))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1466,7 +1466,7 @@ func TestMarshalerError(t *testing.T) {
 	type x struct {
 		InvalidIP net.IP
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1507,7 +1507,7 @@ func TestTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := NewEncoder(time.Time{})
+	enc, err := NewEncoder(timeType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1559,7 +1559,7 @@ func TestDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := NewEncoder(time.Duration(0))
+	enc, err := NewEncoder(durationType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1606,21 +1606,21 @@ func TestByteArray(t *testing.T) {
 		{[3]*byte{&a, &b, &c}, "[97,98,99]", true},
 		{[3]*byte{&a, &b, &c}, "[97,98,99]", false},
 	}
-	for _, td := range testdata {
+	for _, tt := range testdata {
 		var opts []Option
-		if td.Raw {
+		if tt.Raw {
 			opts = append(opts, ByteArrayAsString)
 		}
-		enc, err := NewEncoder(td.Val)
+		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
 			t.Error(err)
 		}
 		var buf bytes.Buffer
-		if err := enc.Encode(td.Val, &buf, opts...); err != nil {
+		if err := enc.Encode(tt.Val, &buf, opts...); err != nil {
 			t.Error(err)
 		}
-		if s := buf.String(); s != td.Str {
-			t.Errorf("got %s, want %s", s, td.Str)
+		if s := buf.String(); s != tt.Str {
+			t.Errorf("got %s, want %s", s, tt.Str)
 		}
 	}
 }
@@ -1637,7 +1637,7 @@ func TestByteSliceVariousSizes(t *testing.T) {
 			if _, err := rand.Read(b); err != nil {
 				t.Fatal(err)
 			}
-			enc, err := NewEncoder([]byte{})
+			enc, err := NewEncoder(reflect.TypeOf([]byte{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1666,7 +1666,7 @@ func TestRenamedByteSlice(t *testing.T) {
 		b2("Loreum"),
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt)
+		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1686,7 +1686,7 @@ func TestRenamedByteSlice(t *testing.T) {
 func TestByteSliceAsRawString(t *testing.T) {
 	b := []byte("Loreum")
 
-	enc, err := NewEncoder(b)
+	enc, err := NewEncoder(reflect.TypeOf(b))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1703,7 +1703,7 @@ func TestByteSliceAsRawString(t *testing.T) {
 // TestInvalidFloatValues tests that encoding an
 // invalid float value returns UnsupportedValueError.
 func TestInvalidFloatValues(t *testing.T) {
-	enc, err := NewEncoder(float64(0))
+	enc, err := NewEncoder(reflect.TypeOf(float64(0)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1740,7 +1740,7 @@ func TestStringEscaping(t *testing.T) {
 	}
 	for _, tt := range testdata {
 		s := string(tt.Bts)
-		enc, err := NewEncoder(s)
+		enc, err := NewEncoder(reflect.TypeOf(s))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1796,7 +1796,7 @@ func TestBytesEscaping(t *testing.T) {
 		{"\x1f", `"\u001f"`},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.in)
+		enc, err := NewEncoder(reflect.TypeOf(tt.in))
 		if err != nil {
 			t.Error(err)
 		}
@@ -1827,7 +1827,7 @@ func TestTaggedFieldDominates(t *testing.T) {
 	)
 	y := Y{A{"Loreum"}, D{"Ipsum"}}
 
-	enc, err := NewEncoder(Y{})
+	enc, err := NewEncoder(reflect.TypeOf(Y{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1868,7 +1868,7 @@ func TestDuplicatedFieldDisappears(t *testing.T) {
 		C{"Ipsum"},
 		Y{A{"Sit"}, D{"Amet"}},
 	}
-	enc, err := NewEncoder(Z{})
+	enc, err := NewEncoder(reflect.TypeOf(Z{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1907,7 +1907,7 @@ func TestJSONNumber(t *testing.T) {
 		{json.Number("invalid"), "", false},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(tt.Number)
+		enc, err := NewEncoder(numberType)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1991,7 +1991,7 @@ func (t *simplePayload) MarshalJSONObject(enc *gojay.Encoder) {
 }
 
 func BenchmarkSimplePayload(b *testing.B) {
-	enc, err := NewEncoder(simplePayload{})
+	enc, err := NewEncoder(reflect.TypeOf(simplePayload{}))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2079,7 +2079,7 @@ func BenchmarkComplexPayload(b *testing.B) {
 		Q  [][]int      `json:"q"`
 		R  [2][2]string `json:"r"`
 	}
-	enc, err := NewEncoder(x{})
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2150,8 +2150,8 @@ func BenchmarkComplexPayload(b *testing.B) {
 
 func BenchmarkInterface(b *testing.B) {
 	s := "Loreum"
-	var iface interface{} = &s
-	enc, err := NewEncoder(iface)
+	var i interface{} = &s
+	enc, err := NewEncoder(reflect.TypeOf(i))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2159,7 +2159,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(iface)
+			bts, err := json.Marshal(i)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -2170,7 +2170,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(iface)
+			bts, err := jsoniterStd.Marshal(i)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -2182,7 +2182,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(iface, &buf); err != nil {
+			if err := enc.Encode(i, &buf); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(buf.Len()))
@@ -2220,7 +2220,7 @@ func BenchmarkMap(b *testing.B) {
 		}
 	})
 	b.Run("jettison", func(b *testing.B) {
-		enc, err := NewEncoder(m)
+		enc, err := NewEncoder(reflect.TypeOf(m))
 		if err != nil {
 			b.Fatal(err)
 		}

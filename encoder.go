@@ -211,11 +211,11 @@ func (e *MarshalerError) Error() string {
 // values of the given type. The Encoder can be explicitly
 // initialized by calling its Compile method, otherwise the
 // operation is done on first call to Marshal.
-func NewEncoder(i interface{}) (*Encoder, error) {
-	if i == nil {
-		return nil, errors.New("nil interface")
+func NewEncoder(rt reflect.Type) (*Encoder, error) {
+	if rt == nil {
+		return nil, errors.New("invalid type: nil")
 	}
-	return &Encoder{typ: reflect.TypeOf(i)}, nil
+	return &Encoder{typ: rt}, nil
 }
 
 // Compile generates the encoder's instructions.
@@ -237,6 +237,10 @@ func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
 	}
 	typ := reflect.TypeOf(i)
 
+	return e.encode(typ, i, w, opts...)
+}
+
+func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Option) error {
 	var p unsafe.Pointer
 
 	if typ.Kind() == reflect.Map {
