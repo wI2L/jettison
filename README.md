@@ -76,7 +76,7 @@ if err := enc.Encode(&xx, &buf); err != nil {
 fmt.Println(buf.String())
 // {"a":"Loreum","b":42}
 ```
-The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the above example, we use a new `bytes.Buffer` instance, which implements the three interfaces mentioned.
+The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the above example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
 
 ### Options
 

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	// imports for benchmarks
 	"github.com/francoispqt/gojay"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -863,7 +864,7 @@ func TestEmbeddedStructs(t *testing.T) {
 	if !equalStdLib(t, xx1, buf.Bytes()) {
 		t.Error("expected outputs to be equal")
 	}
-	// xx is a variant of the x type with the first
+	// x2 is a variant of the x1 type with the first
 	// field not using the omitempty option.
 	type x2 struct {
 		A int16 `json:"a"`
@@ -1713,7 +1714,8 @@ func TestInvalidFloatValues(t *testing.T) {
 		math.Inf(1),
 	} {
 		v := v
-		err := enc.Encode(&v, nil)
+		var buf bytes.Buffer
+		err := enc.Encode(&v, &buf)
 		if err != nil {
 			_, ok := err.(*UnsupportedValueError)
 			if !ok {

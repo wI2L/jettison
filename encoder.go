@@ -11,6 +11,11 @@ import (
 	"github.com/modern-go/reflect2"
 )
 
+// ErrInvalidWriter is the error returned by an
+// Encoder's Encode method when the given Writer
+// is invalid.
+var ErrInvalidWriter = errors.New("invalid writer")
+
 var statePool = sync.Pool{}
 
 // Writer is an interface that groups the
@@ -118,7 +123,7 @@ func (df DurationFmt) String() string {
 }
 
 type encodeState struct {
-	// inputPrt indicates if the input
+	// inputPtr indicates if the input
 	// value to encode is a pointer.
 	inputPtr bool
 
@@ -226,6 +231,9 @@ func (e *Encoder) Compile() error {
 
 // Encode writes the JSON encoding of i to w.
 func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
+	if w == nil {
+		return ErrInvalidWriter
+	}
 	if i == nil {
 		_, err := w.WriteString("null")
 		return err
