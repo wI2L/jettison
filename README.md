@@ -100,11 +100,15 @@ Opt-in options are available to customize the behavior of the package. The third
 
 - `time.Time` and `Time.Duration` types are handled natively by the package. For the first, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` directly. For the second, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces, the encoder uses the result of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String` based on the duration format configured.
 
-- Nil map keys instances implementing the `TextMarshaler` interface are encoded as an empty string, while the `encoding/package` currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.
+- Nil map keys values implementing the `TextMarshaler` interface are encoded as an empty string, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1](#current-go-issues)</sup>
+
+- Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235).<sup>[1](#current-go-issues)</sup>
+
+<sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
 
 ### Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
+> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
 go version go1.12.5 linux/amd64
 
 ##### Simple
