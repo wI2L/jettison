@@ -187,7 +187,7 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 		}
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{t, err}
+			return &MarshalerError{t, err, jsonMarshalerCtx}
 		}
 		_, err = w.Write(b)
 		return err
@@ -210,7 +210,7 @@ func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{t, err}
+			return &MarshalerError{reflect.PtrTo(t), err, jsonMarshalerCtx}
 		}
 		_, err = w.Write(b)
 		return err
@@ -228,7 +228,7 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{t, err}
+			return &MarshalerError{t, err, textMarshalerCtx}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -256,7 +256,7 @@ func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{t, err}
+			return &MarshalerError{reflect.PtrTo(t), err, textMarshalerCtx}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -442,8 +442,6 @@ rest:
 func integerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
 	var i int64
 	switch k {
-	case reflect.Int:
-		i = int64(*(*int)(p))
 	case reflect.Int8:
 		i = int64(*(*int8)(p))
 	case reflect.Int16:
@@ -470,8 +468,6 @@ func intInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 func unsignedIntegerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
 	var i uint64
 	switch k {
-	case reflect.Uint:
-		i = uint64(*(*uint)(p))
 	case reflect.Uint8:
 		i = uint64(*(*uint8)(p))
 	case reflect.Uint16:
@@ -774,9 +770,6 @@ func interfaceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 // is unexpected, or if the array value type is not
 // supported.
 func newArrayInstr(t reflect.Type) (Instruction, error) {
-	if t.Kind() != reflect.Array {
-		return nil, errors.New("invalid type")
-	}
 	et := t.Elem()
 
 	// Byte arrays does not encode as a string
@@ -846,9 +839,6 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 // is unexpected, or if the slice value type is not
 // supported.
 func newSliceInstr(t reflect.Type) (Instruction, error) {
-	if t.Kind() != reflect.Slice {
-		return nil, errors.New("invalid type")
-	}
 	et := t.Elem()
 
 	// Byte slices are encoded as a string to
@@ -932,9 +922,6 @@ func (kv keyvalue) Less(i, j int) bool { return bytes.Compare(kv[i].key, kv[j].k
 // encode a Go map. It returns an error if
 // the given type is unexpected.
 func newMapInstr(t reflect.Type) (Instruction, error) {
-	if t.Kind() != reflect.Map {
-		return nil, errors.New("invalid type")
-	}
 	kt := t.Key()
 
 	if !isString(kt) && !isInteger(kt) && !kt.Implements(textMarshalerType) {

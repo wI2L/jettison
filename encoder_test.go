@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -1460,41 +1461,57 @@ func TestNilMarshaler(t *testing.T) {
 	}
 }
 
+var errMarshaler = errors.New("")
+
+type (
+	errJSONMarshaler    struct{}
+	errJSONMarshalerPtr struct{}
+)
+
+func (errJSONMarshaler) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
+func (errTextMarshaler) MarshalText() ([]byte, error) { return nil, errMarshaler }
+
+type (
+	errTextMarshaler    struct{}
+	errTextMarshalerPtr struct{}
+)
+
+func (*errJSONMarshalerPtr) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
+func (*errTextMarshalerPtr) MarshalText() ([]byte, error) { return nil, errMarshaler }
+
 // TestMarshalerError tests that a MarshalerError
 // is returned when a MarshalText or a MarshalJSON
 // method returns an error.
 func TestMarshalerError(t *testing.T) {
-	type x struct {
-		InvalidIP net.IP
+	testdata := []interface{}{
+		errJSONMarshaler{}, &errJSONMarshalerPtr{},
+		errTextMarshaler{}, &errTextMarshalerPtr{},
 	}
-	enc, err := NewEncoder(reflect.TypeOf(x{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	xx := &x{
-		// InvalidIP is not compliant with
-		// net.IPv4len or net.IPv6len.
-		InvalidIP: []byte{0, 0, 0, 0, 0},
-	}
-	var buf bytes.Buffer
-	err = enc.Encode(xx, &buf)
-	if err != nil {
-		me, ok := err.(*MarshalerError)
-		if !ok {
-			t.Fatalf("got %T, want MarshalerError", err)
+	for _, tt := range testdata {
+		enc, err := NewEncoder(reflect.TypeOf(tt))
+		if err != nil {
+			t.Fatal(err)
 		}
-		iptyp := reflect.TypeOf(net.IP{})
-		if me.Typ != iptyp {
-			t.Errorf("got %s, want %s", me.Typ, iptyp)
+		var buf bytes.Buffer
+		err = enc.Encode(tt, &buf)
+		if err != nil {
+			me, ok := err.(*MarshalerError)
+			if !ok {
+				t.Fatalf("got %T, want MarshalerError", err)
+			}
+			typ := reflect.TypeOf(tt)
+			if me.Typ != typ {
+				t.Errorf("got %s, want %s", me.Typ, typ)
+			}
+			if me.Err == nil {
+				t.Errorf("expected non-nil error")
+			}
+			if me.Error() == "" {
+				t.Error("expected non-empty error message")
+			}
+		} else {
+			t.Error("got nil, want non-nil error")
 		}
-		if me.Err == nil {
-			t.Errorf("expected non-nil error")
-		}
-		if me.Error() == "" {
-			t.Error("expected non-empty error message")
-		}
-	} else {
-		t.Error("got nil, want non-nil error")
 	}
 }
 
@@ -1952,6 +1969,25 @@ func TestDurationFmtString(t *testing.T) {
 	}
 }
 
+func TestInstrCache(t *testing.T) {
+	type x struct {
+		A string
+	}
+	i1, err := cachedTypeInstr(reflect.TypeOf(x{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	i2, err := cachedTypeInstr(reflect.TypeOf(x{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1 := reflect.ValueOf(i1).Pointer()
+	p2 := reflect.ValueOf(i2).Pointer()
+	if p1 != p2 {
+		t.Errorf("expected instructions to be the same: %v != %v", p1, p2)
+	}
+}
+
 // equalStdLib marshals i to JSON using the encoding/json
 // package and returns whether the output equals b.
 func equalStdLib(t *testing.T, i interface{}, b []byte) bool {
@@ -2152,8 +2188,8 @@ func BenchmarkComplexPayload(b *testing.B) {
 
 func BenchmarkInterface(b *testing.B) {
 	s := "Loreum"
-	var i interface{} = &s
-	enc, err := NewEncoder(reflect.TypeOf(i))
+	var iface interface{} = s
+	enc, err := NewEncoder(reflect.TypeOf(iface))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2161,7 +2197,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(i)
+			bts, err := json.Marshal(iface)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -2172,7 +2208,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(i)
+			bts, err := jsoniterStd.Marshal(iface)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -2184,7 +2220,7 @@ func BenchmarkInterface(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(i, &buf); err != nil {
+			if err := enc.Encode(iface, &buf); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(buf.Len()))

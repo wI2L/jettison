@@ -1,13 +1,11 @@
 package jettison
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 	"unsafe"
 )
@@ -61,25 +59,12 @@ func (x byIndex) Less(i, j int) bool {
 	return len(x[i].index) < len(x[j].index)
 }
 
-var structFieldCache sync.Map // map[reflect.Type][]field
-
-func cachedStructFields(t reflect.Type) []field {
-	if f, ok := structFieldCache.Load(t); ok {
-		return f.([]field)
-	}
-	f, _ := structFieldCache.LoadOrStore(t, structFields(t))
-	return f.([]field)
-}
-
 // newStructInstr returns a new instruction to encode a
 // Go struct. It returns an error if the given type is
 // unexpected, or if one of the struct fields has an
 // unsupported type.
 func newStructInstr(t reflect.Type) (Instruction, error) {
-	if t.Kind() != reflect.Struct {
-		return nil, errors.New("invalid type")
-	}
-	fields := cachedStructFields(t)
+	fields := structFields(t)
 	instrs := make([]Instruction, 0, len(fields))
 
 	// Iterate over the list of fields scanned
@@ -137,7 +122,7 @@ func newStructFieldInstr(f field) (Instruction, error) {
 	}
 	// The length of sequences must be equal.
 	if len(f.indirSeq) != len(f.offsetSeq) {
-		return nil, fmt.Errorf("inconsistent indirection seq and offset seq: %d and %d",
+		return nil, fmt.Errorf("inconsistent indirection and offset sequences length: %d and %d",
 			len(f.indirSeq), len(f.offsetSeq),
 		)
 	}

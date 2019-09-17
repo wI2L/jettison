@@ -11,12 +11,12 @@ import (
 	"github.com/modern-go/reflect2"
 )
 
+var statePool = sync.Pool{}
+
 // ErrInvalidWriter is the error returned by an
 // Encoder's Encode method when the given Writer
 // is invalid.
 var ErrInvalidWriter = errors.New("invalid writer")
-
-var statePool = sync.Pool{}
 
 // Writer is an interface that groups the
 // io.Writer, io.StringWriter and io.ByteWriter
@@ -43,59 +43,6 @@ type Encoder struct {
 // Option represents an option that
 // defines the behavior of an encoder.
 type Option func(*encodeState)
-
-// TimeLayout sets the time layout used to
-// encode a time.Time value.
-func TimeLayout(layout string) Option {
-	return func(es *encodeState) { es.timeLayout = layout }
-}
-
-// DurationFormat sets the format used to
-// encode a time.Duration value.
-func DurationFormat(df DurationFmt) Option {
-	return func(es *encodeState) { es.durationFmt = df }
-}
-
-// UnixTimestamp configures the encoder to encode
-// time.Time value as Unix timestamps. This setting
-// has precedence over any time layout.
-func UnixTimestamp(es *encodeState) {
-	es.useTimestamps = true
-}
-
-// UnsortedMap disables map keys sort.
-func UnsortedMap(es *encodeState) {
-	es.unsortedMap = true
-}
-
-// ByteArrayAsString encodes byte arrays as
-// raw JSON strings.
-func ByteArrayAsString(es *encodeState) {
-	es.byteArrayAsString = true
-}
-
-// RawByteSlices disables the default behavior that
-// encodes byte slices as base64-encoded strings.
-func RawByteSlices(es *encodeState) {
-	es.noBase64Slice = true
-}
-
-// NilMapEmpty encodes a nil Go map as an
-// empty JSON object, rather than null.
-func NilMapEmpty(es *encodeState) {
-	es.nilMapEmpty = true
-}
-
-// NilSliceEmpty encodes a nil Go slice as
-// an empty JSON array, rather than null.
-func NilSliceEmpty(es *encodeState) {
-	es.nilSliceEmpty = true
-}
-
-// NoStringEscaping disables string escaping.
-func NoStringEscaping(es *encodeState) {
-	es.noStringEscape = true
-}
 
 // DurationFmt represents the format used
 // to encode a time.Duration.
@@ -200,17 +147,27 @@ func (e *UnsupportedValueError) Error() string {
 	return fmt.Sprintf("unsupported value: %s", e.Str)
 }
 
+type marshalerCtx string
+
+const (
+	jsonMarshalerCtx marshalerCtx = "JSON"
+	textMarshalerCtx marshalerCtx = "Text"
+)
+
 // MarshalerError represents an error from calling
 // a MarshalJSON or MarshalText method.
 type MarshalerError struct {
 	Typ reflect.Type
 	Err error
+	ctx marshalerCtx
 }
 
 // Error implements the builtin error interface.
 func (e *MarshalerError) Error() string {
-	return fmt.Sprintf("error calling Marshal* for type %v: %s", e.Typ, e.Err)
+	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.Err)
 }
+
+func (e *MarshalerError) Unwrap() error { return e.Err }
 
 // NewEncoder returns a new encoder that can marshal the
 // values of the given type. The Encoder can be explicitly
@@ -227,6 +184,59 @@ func NewEncoder(rt reflect.Type) (*Encoder, error) {
 // Calling this method more than once is a noop.
 func (e *Encoder) Compile() error {
 	return e.compile()
+}
+
+// TimeLayout sets the time layout used to
+// encode a time.Time value.
+func TimeLayout(layout string) Option {
+	return func(es *encodeState) { es.timeLayout = layout }
+}
+
+// DurationFormat sets the format used to
+// encode a time.Duration value.
+func DurationFormat(df DurationFmt) Option {
+	return func(es *encodeState) { es.durationFmt = df }
+}
+
+// UnixTimestamp configures the encoder to encode
+// time.Time value as Unix timestamps. This setting
+// has precedence over any time layout.
+func UnixTimestamp(es *encodeState) {
+	es.useTimestamps = true
+}
+
+// UnsortedMap disables map keys sort.
+func UnsortedMap(es *encodeState) {
+	es.unsortedMap = true
+}
+
+// ByteArrayAsString encodes byte arrays as
+// raw JSON strings.
+func ByteArrayAsString(es *encodeState) {
+	es.byteArrayAsString = true
+}
+
+// RawByteSlices disables the default behavior that
+// encodes byte slices as base64-encoded strings.
+func RawByteSlices(es *encodeState) {
+	es.noBase64Slice = true
+}
+
+// NilMapEmpty encodes a nil Go map as an
+// empty JSON object, rather than null.
+func NilMapEmpty(es *encodeState) {
+	es.nilMapEmpty = true
+}
+
+// NilSliceEmpty encodes a nil Go slice as
+// an empty JSON array, rather than null.
+func NilSliceEmpty(es *encodeState) {
+	es.nilSliceEmpty = true
+}
+
+// NoStringEscaping disables string escaping.
+func NoStringEscaping(es *encodeState) {
+	es.noStringEscape = true
 }
 
 // Encode writes the JSON encoding of i to w.
