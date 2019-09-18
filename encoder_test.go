@@ -36,13 +36,30 @@ func TestNewEncoderNilInterface(t *testing.T) {
 // Encode method of an encoder with a type that differs from
 // the one for which is was created returns an error.
 func TestEncodeWithIncompatibleType(t *testing.T) {
-	type x struct{}
+	type (
+		x struct{}
+		y struct{}
+	)
 	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = enc.Encode("Loreum", nil)
-	if err == nil {
+	err = enc.Encode(y{}, &bytes.Buffer{})
+	if err != nil {
+		tme, ok := err.(*TypeMismatchError)
+		if !ok {
+			t.Fatalf("got %T, want TypeMismatchError", err)
+		}
+		if s := tme.Error(); s == "" {
+			t.Errorf("want non empty error message")
+		}
+		if tox := reflect.TypeOf(x{}); tme.EncType != tox {
+			t.Errorf("got %s, want %s", tme.EncType, tox)
+		}
+		if toy := reflect.TypeOf(y{}); tme.SrcType != toy {
+			t.Errorf("got %s, want %s", tme.SrcType, toy)
+		}
+	} else {
 		t.Error("expected non-nil error")
 	}
 }
@@ -1503,7 +1520,7 @@ func TestMarshalerError(t *testing.T) {
 			if me.Typ != typ {
 				t.Errorf("got %s, want %s", me.Typ, typ)
 			}
-			if me.Err == nil {
+			if err := me.Unwrap(); err == nil {
 				t.Errorf("expected non-nil error")
 			}
 			if me.Error() == "" {

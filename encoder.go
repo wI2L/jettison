@@ -147,6 +147,20 @@ func (e *UnsupportedValueError) Error() string {
 	return fmt.Sprintf("unsupported value: %s", e.Str)
 }
 
+// TypeMismatchError is the error returned by an
+// Encoder's Encode method whhen the type of the
+// input value does not match the type for which
+// the encoder was compiled.
+type TypeMismatchError struct {
+	SrcType reflect.Type
+	EncType reflect.Type
+}
+
+// Error implements the builtin error interface.
+func (e *TypeMismatchError) Error() string {
+	return fmt.Sprintf("incompatible value type: %v", e.SrcType)
+}
+
 type marshalerCtx string
 
 const (
@@ -289,7 +303,7 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 		typ = typ.Elem()
 	}
 	if typ != e.typ {
-		return fmt.Errorf("for %s encoder, incompatible value type: %v", e.typ, typ)
+		return &TypeMismatchError{SrcType: typ, EncType: e.typ}
 	}
 	es := newState()
 	es.inputPtr = isPtr
