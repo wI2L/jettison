@@ -40,7 +40,11 @@ _cgo_export.*
 *.prof
 *.out
 _testmain.go
+
+# Scripts
 coverage.txt
+.benchruns
+benchstats
 
 # Dependency directories
 vendor/
