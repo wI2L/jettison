@@ -5,7 +5,7 @@ set -e
 echo "Starting benchmark..."
 
 # Execute benchmarks multiple times.
-for i in {1..1}
+for i in {1..5}
 do
    echo " + run #$i"
    go test -bench=. >> .benchruns

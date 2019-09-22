@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.3.0] - 2019-09-23
+- Add global functions `Marshal`, `MarshalTo` and `Register`.
+- Update `README.md`: usage, examples and benchmarks.
+
 ## [v0.2.1] - 2019-09-10
 - Refactor instructions for types implementing the `json.Marshaler` and `encoding.TextMarshaler` interfaces.
    - Fix encoding of `nil` instances.
@@ -20,6 +24,7 @@ All notable changes to this project are documented in this file.
 ## [v0.1.0] - 2019-08-30
 Initial realease.
 
+[v0.3.0]: https://github.com/wI2L/jettison/compare/v0.2.1...v0.3.0
 [v0.2.1]: https://github.com/wI2L/jettison/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/wI2L/jettison/compare/0.1.0...v0.2.0
 [v0.1.0]: https://github.com/wI2L/jettison/releases/tag/0.1.0
