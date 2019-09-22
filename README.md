@@ -155,19 +155,19 @@ SimplePayload/standard-4    658ns ± 2%
 SimplePayload/jsoniter-4    711ns ± 1%
 SimplePayload/gojay-4       474ns ± 1%
 SimplePayload/jettison-4    441ns ± 0%
-
+-
 name                      speed
 SimplePayload/standard-4  205MB/s ± 2%
 SimplePayload/jsoniter-4  190MB/s ± 1%
 SimplePayload/gojay-4     285MB/s ± 1%
 SimplePayload/jettison-4  306MB/s ± 0%
-
+-
 name                      alloc/op
 SimplePayload/standard-4     144B ± 0%
 SimplePayload/jsoniter-4     152B ± 0%
 SimplePayload/gojay-4        512B ± 0%
 SimplePayload/jettison-4    0.00B
-
+-
 name                      allocs/op
 SimplePayload/standard-4     1.00 ± 0%
 SimplePayload/jsoniter-4     2.00 ± 0%
@@ -186,17 +186,17 @@ name                       time/op
 ComplexPayload/standard-4   2.57µs ± 0%
 ComplexPayload/jsoniter-4   2.38µs ± 1%
 ComplexPayload/jettison-4   1.50µs ± 0%
-
+-
 name                       speed
 ComplexPayload/standard-4  151MB/s ± 0%
 ComplexPayload/jsoniter-4  163MB/s ± 1%
 ComplexPayload/jettison-4  258MB/s ± 0%
-
+-
 name                       alloc/op
 ComplexPayload/standard-4     416B ± 0%
 ComplexPayload/jsoniter-4     472B ± 0%
 ComplexPayload/jettison-4    0.00B
-
+-
 name                       allocs/op
 ComplexPayload/standard-4     1.00 ± 0%
 ComplexPayload/jsoniter-4     3.00 ± 0%
@@ -212,17 +212,17 @@ name                  time/op
 Interface/standard-4     161ns ± 4%
 Interface/jsoniter-4     141ns ± 1%
 Interface/jettison-4    64.7ns ± 3%
-
+-
 name                  speed
 Interface/standard-4  49.7MB/s ± 4%
 Interface/jsoniter-4  56.8MB/s ± 1%
 Interface/jettison-4   124MB/s ± 3%
-
+-
 name                  alloc/op
 Interface/standard-4     8.00B ± 0%
 Interface/jsoniter-4     8.00B ± 0%
 Interface/jettison-4     0.00B
-
+-
 name                  allocs/op
 Interface/standard-4      1.00 ± 0%
 Interface/jsoniter-4      1.00 ± 0%
@@ -239,19 +239,19 @@ Map/standard-4           1.21µs ± 5%
 Map/jsoniter-4           1.07µs ± 1%
 Map/jettison/sort-4       860ns ± 0%
 Map/jettison/nosort-4     379ns ± 1%
-
+-
 name                   speed
 Map/standard-4         15.8MB/s ± 4%
 Map/jsoniter-4         17.7MB/s ± 1%
 Map/jettison/sort-4    22.1MB/s ± 1%
 Map/jettison/nosort-4  50.1MB/s ± 1%
-
+-
 name                   alloc/op
 Map/standard-4             536B ± 0%
 Map/jsoniter-4             680B ± 0%
 Map/jettison/sort-4        496B ± 0%
 Map/jettison/nosort-4      128B ± 0%
-
+-
 name                   allocs/op
 Map/standard-4             13.0 ± 0%
 Map/jsoniter-4             11.0 ± 0%
