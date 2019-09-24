@@ -1,6 +1,6 @@
 language: go
 
-go: 
+go:
   - 1.12.x
   - 1.13.x
   - master
@@ -15,7 +15,7 @@ env:
 install: true
 
 script:
-  - ./test.sh
+  - ./ci/test.sh
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

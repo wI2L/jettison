@@ -15,7 +15,8 @@
 
 ### Installation
 
-Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the *SemVer* format, prefixed with a `v`, starting from `0.2.0`. You can get the latest release using the following command.
+Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the _SemVer_ format, prefixed with a `v`, starting from `0.2.0`. You can get the latest release using the following command.
+
 ```sh
 $ go get github.com/wI2L/jettison
 ```
@@ -41,7 +42,7 @@ The package aims to have a behavior similar to that of the standard library for 
 
 ### Implementation details
 
-The main concept of Jettison consists of using pre-build encoders to reduce the cost of using the `reflect` package at runtime. When a new instance of an encoder is created for a specific type, a set of *instructions* is recursively generated, which defines how to iteratively encode a value. An *instruction* is a function or a closure, that have all the information required to read the data from memory using *unsafe* operations during the instruction set execution.
+The main concept of Jettison consists of using pre-build encoders to reduce the cost of using the `reflect` package at runtime. When a new instance of an encoder is created for a specific type, a set of _instructions_ is recursively generated, which defines how to iteratively encode a value. An _instruction_ is a function or a closure, that have all the information required to read the data from memory using _unsafe_ operations during the instruction set execution.
 
 ### Usage
 
@@ -114,17 +115,17 @@ fmt.Println(buf.String())
 
 Opt-in options are available to customize the behavior of the package. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-| Option | Description |
-| ---: | --- |
-| `TimeLayout` | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default. |
-| `DurationFormat` | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available. |
-| `UnixTimestamp` | Encode `time.Time` values as JSON numbers representing Unix timestamps. |
-| `UnsortedMap` | Disables map keys sort. |
+|              Option | Description                                                                                                                                                                                       |
+| ------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|        `TimeLayout` | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                          |
+|    `DurationFormat` | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                          |
+|     `UnixTimestamp` | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                           |
+|       `UnsortedMap` | Disables map keys sort.                                                                                                                                                                           |
 | `ByteArrayAsString` | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also specified. |
-| `RawByteSlices` | Disables *base64* default encoding used for byte slices. |
-| `NilMapEmpty` | Encodes nil maps as empty JSON objects rather than `null`. |
-| `NilSliceEmpty` | Encodes nil slices as empty JSON arrays rather than `null`. |
-| `NoStringEscaping` | Disables strings escaping. |
+|     `RawByteSlices` | Disables _base64_ default encoding used for byte slices.                                                                                                                                          |
+|       `NilMapEmpty` | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                        |
+|     `NilSliceEmpty` | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                       |
+|  `NoStringEscaping` | Disables strings escaping.                                                                                                                                                                        |
 
 ### Differences with `encoding/json`
 
@@ -140,8 +141,8 @@ Opt-in options are available to customize the behavior of the package. The third
 
 ### Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
-go version go1.13 linux/amd64
+> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
+> go version go1.13 linux/amd64
 
 #### Simple
 
