@@ -171,17 +171,21 @@ const (
 // MarshalerError represents an error from calling
 // a MarshalJSON or MarshalText method.
 type MarshalerError struct {
+	err error
 	Typ reflect.Type
-	Err error
 	ctx marshalerCtx
 }
 
 // Error implements the builtin error interface.
 func (e *MarshalerError) Error() string {
-	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.Err)
+	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.err)
 }
 
-func (e *MarshalerError) Unwrap() error { return e.Err }
+// Unwrap returns the wrapped error.
+// This doesn't implement a public interface, but
+// allow to use the errors.Unwrap function released
+// in Go 1.13 with a MarshalerError.
+func (e *MarshalerError) Unwrap() error { return e.err }
 
 // NewEncoder returns a new encoder that can marshal the
 // values of the given type. The Encoder can be explicitly

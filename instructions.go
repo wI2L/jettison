@@ -187,7 +187,7 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 		}
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{t, err, jsonMarshalerCtx}
+			return &MarshalerError{err, t, jsonMarshalerCtx}
 		}
 		_, err = w.Write(b)
 		return err
@@ -210,7 +210,7 @@ func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{reflect.PtrTo(t), err, jsonMarshalerCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), jsonMarshalerCtx}
 		}
 		_, err = w.Write(b)
 		return err
@@ -228,7 +228,7 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{t, err, textMarshalerCtx}
+			return &MarshalerError{err, t, textMarshalerCtx}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -256,7 +256,7 @@ func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{reflect.PtrTo(t), err, textMarshalerCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), textMarshalerCtx}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
