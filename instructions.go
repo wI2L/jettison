@@ -368,46 +368,58 @@ func spb(p unsafe.Pointer) []byte {
 // isSafeJSONChar returns whether the char c
 // can be used in a JSON string without escaping.
 func isSafeJSONChar(c byte) bool {
-	if c < 0x20 || c == '"' || c == '\\' || c == '/' {
+	if c < 0x20 || c == '"' || c == '\\' {
 		return false
 	}
 	return true
+}
+
+func isHTMLChar(c byte) bool {
+	if c == '&' || c == '<' || c == '>' {
+		return true
+	}
+	return false
 }
 
 func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 	if len(b) == 0 {
 		return nil
 	}
-	at, i := 0, 0
+	at := 0
 	if es.noStringEscape {
-		goto rest
+		goto end
 	}
-	for _, c := range b {
-		if c < utf8.RuneSelf {
+	for i := 0; i < len(b); {
+		if c := b[i]; c < utf8.RuneSelf {
 			// If the current character doesn't need
 			// to be escaped, accumulate the bytes to
 			// save some write operations.
 			if isSafeJSONChar(c) {
+				if !es.noHTMLEscape && isHTMLChar(c) {
+					goto escape
+				}
 				i++
 				continue
 			}
+		escape:
 			// Write accumulated single-byte characters.
 			if at < i {
 				if _, err := w.Write(b[at:i]); err != nil {
 					return err
 				}
 			}
-			var err error
 			if err := w.WriteByte('\\'); err != nil {
 				return err
 			}
+			var err error
+			// The encoding/json package implements only
+			// a few of the special two-character escape
+			// sequence described in the RFC 8259, Section 7.
+			// \b and \f were ignored on purpose, see
+			// https://codereview.appspot.com/4678046.
 			switch c {
-			case '"', '\\', '/':
+			case '"', '\\':
 				err = w.WriteByte(c)
-			case '\b': // 0x8, backspace
-				err = w.WriteByte('b')
-			case '\f': // 0xC, form feed
-				err = w.WriteByte('f')
 			case '\n': // 0xA, line feed
 				err = w.WriteByte('n')
 			case '\r': // 0xD, carriage return
@@ -426,9 +438,56 @@ func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 			}
 			i++
 			at = i
+			continue
 		}
+		if !es.noUTF8Coercion {
+			c, size := utf8.DecodeRune(b[i:])
+
+			// Coerce to valid UTF-8, by replacing invalid
+			// bytes with the Unicode replacement rune.
+			if c == utf8.RuneError && size == 1 {
+				if at < i {
+					if _, err := w.Write(b[at:i]); err != nil {
+						return err
+					}
+				}
+				if _, err := w.WriteString(`\ufffd`); err != nil {
+					return err
+				}
+				i += size
+				at = i
+				continue
+			}
+			// U+2028 is LINE SEPARATOR.
+			// U+2029 is PARAGRAPH SEPARATOR.
+			// They are both technically valid characters in
+			// JSON strings, but don't work in JSONP, which has
+			// to be evaluated as JavaScript, and can lead to
+			// security holes there. It is valid JSON to escape
+			// them, so we do so unconditionally.
+			// See http://timelessrepo.com/json-isnt-a-javascript-subset.
+			if c == '\u2028' || c == '\u2029' {
+				if at < i {
+					if _, err := w.Write(b[at:i]); err != nil {
+						return err
+					}
+				}
+				buf := es.scratch[:0]
+				buf = append(buf, `\u202`...)
+				buf = append(buf, hex[c&0xF])
+				if _, err := w.Write(buf); err != nil {
+					return err
+				}
+				i += size
+				at = i
+				continue
+			}
+			i += size
+			continue
+		}
+		i++
 	}
-rest:
+end:
 	// Write remaining bytes.
 	if at < len(b) {
 		if _, err := w.Write(b[at:]); err != nil {

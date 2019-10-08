@@ -1,0 +1,6 @@
+coverage:
+  range: 70..90
+  status:
+    project:
+      default:
+        threshold: 1%

@@ -1,5 +1,5 @@
 <h1 align="center">Jettison</h1>
-<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is an instructions-based <strong>JSON</strong> encoder inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
+<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a high performance, reflection-less, and configurable <strong>JSON</strong> encoder inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
 <p align="center">
     <a href="https://github.com/wI2L/jettison/releases"><img src="https://img.shields.io/github/v/tag/wI2L/jettison?color=blueviolet&label=version&sort=semver"></a>
     <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
@@ -115,21 +115,21 @@ fmt.Println(buf.String())
 
 Opt-in options are available to customize the behavior of the package. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-|              Option | Description                                                                                                                                                                                       |
-| ------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|        `TimeLayout` | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                          |
-|    `DurationFormat` | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                          |
-|     `UnixTimestamp` | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                           |
-|       `UnsortedMap` | Disables map keys sort.                                                                                                                                                                           |
-| `ByteArrayAsString` | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also specified. |
-|     `RawByteSlices` | Disables _base64_ default encoding used for byte slices.                                                                                                                                          |
-|       `NilMapEmpty` | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                        |
-|     `NilSliceEmpty` | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                       |
-|  `NoStringEscaping` | Disables strings escaping.                                                                                                                                                                        |
+|                   Name | Description                                                                                                                                                                                  |
+| ---------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|           `TimeLayout` | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                     |
+|       `DurationFormat` | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                     |
+|        `UnixTimestamp` | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                      |
+|          `UnsortedMap` | Disables map keys sort. *See Map benchmark for performance gain*.                                                                                                                            |
+|    `ByteArrayAsString` | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used. |
+|        `RawByteSlices` | Disables *base64* default encoding used for byte slices.                                                                                                                                     |
+|          `NilMapEmpty` | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                   |
+|        `NilSliceEmpty` | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                  |
+|     `NoStringEscaping` | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                                        |
+|       `NoHTMLEscaping` | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.                                                   |
+|       `NoUTF8Coercion` | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                                 |
 
 ### Differences with `encoding/json`
-
-- Strings are not coerced to valid UTF-8 by replacing invalid bytes with the Unicode replacement rune, and the brackets `<` and `>` or ampersand `&` are not escaped. Escaping is only applied to bytes lower than `0x20` and those described in the JSON [spec](https://www.json.org/img/string.png).
 
 - `time.Time` and `Time.Duration` types are handled natively by the package. For the first, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` directly. For the second, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces, the encoder uses the result of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String` based on the duration format configured.
 
@@ -142,7 +142,8 @@ Opt-in options are available to customize the behavior of the package. The third
 ### Benchmarks
 
 > Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
-> go version go1.13 linux/amd64
+> go version go1.13 linux/amd64   
+> jettison v0.3.0
 
 #### Simple
 

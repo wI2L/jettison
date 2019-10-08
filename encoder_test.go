@@ -32,6 +32,24 @@ func TestNewEncoderNilInterface(t *testing.T) {
 	}
 }
 
+// TestInvalidWriter tests that invoking the Encode
+// method of an encoder with an invalid writer does
+// return an error.
+func TestInvalidWriter(t *testing.T) {
+	enc, err := NewEncoder(reflect.TypeOf(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = enc.Encode("", nil)
+	if err != nil {
+		if err != ErrInvalidWriter {
+			t.Errorf("got %T, want ErrInvalidWriter", err)
+		}
+	} else {
+		t.Error("expected non-nil errpr")
+	}
+}
+
 // TestEncodeWithIncompatibleType tests that invoking the
 // Encode method of an encoder with a type that differs from
 // the one for which is was created returns an error.
@@ -1765,13 +1783,13 @@ func TestInvalidFloatValues(t *testing.T) {
 // JSON characters are properly escaped when encoding
 // a string.
 func TestStringEscaping(t *testing.T) {
-	b := []byte{'A', 1, 2, 3, '"', '\\', '/', 'B', 'C', '\b', '\f', '\n', '\r', '\t'}
+	b := []byte{'A', 1, 2, 3, '"', '\\', '/', 'B', 'C', '\b', '\f', '\n', '\r', '\t', 0xC7, 0xA3, 0xE2, 0x80, 0xA8, 0xE2, 0x80, 0xA9}
 	testdata := []struct {
 		Bts  []byte
 		Want string
 		NSE  bool // NoStringEscaping
 	}{
-		{b, `"A\u0001\u0002\u0003\"\\\/BC\b\f\n\r\t"`, false},
+		{b, `"A\u0001\u0002\u0003\"\\/BC\u0008\u000c\n\r\tǣ\u2028\u2029"`, false},
 		{b, `"` + string(b) + `"`, true},
 	}
 	for _, tt := range testdata {
@@ -1794,6 +1812,77 @@ func TestStringEscaping(t *testing.T) {
 	}
 }
 
+func TestStringHTMLEscaping(t *testing.T) {
+	b := []byte{'<', '>', '&'}
+	testdata := []struct {
+		Bts  []byte
+		Want string
+		NSE  bool // NoStringEscaping
+		NHE  bool // NoHTMLEscaping
+	}{
+		{b, `"\u003c\u003e\u0026"`, false, false},
+		{b, `"<>&"`, false, true},
+
+		// NoHTMLEscaping is ignored when NoStringEscaping
+		// is set, because it's part of the escaping options.
+		{b, `"<>&"`, true, false},
+		{b, `"<>&"`, true, true},
+	}
+	for _, tt := range testdata {
+		s := string(tt.Bts)
+		enc, err := NewEncoder(reflect.TypeOf(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var opts []Option
+		if tt.NSE {
+			opts = append(opts, NoStringEscaping)
+		}
+		if tt.NHE {
+			opts = append(opts, NoHTMLEscaping)
+		}
+		var buf bytes.Buffer
+		if err := enc.Encode(&s, &buf, opts...); err != nil {
+			t.Error(err)
+		}
+		if s := buf.String(); s != tt.Want {
+			t.Errorf("got %#q, want %#q", s, tt.Want)
+		}
+	}
+}
+
+// TestStringUTF8Coercion tests thats invalid bytes
+// are replaced by the Unicode replacement rune when
+// encoding a JSON string.
+func TestStringUTF8Coercion(t *testing.T) {
+	utf8Seq := string([]byte{'H', 'e', 'l', 'l', 'o', ',', ' ', 0xff, 0xfe, 0xff})
+	testdata := []struct {
+		Bts  string
+		Want string
+		NUC  bool // NoUTF8Coercion
+	}{
+		{utf8Seq, `"Hello, \ufffd\ufffd\ufffd"`, false},
+		{utf8Seq, `"` + utf8Seq + `"`, true},
+	}
+	for _, tt := range testdata {
+		enc, err := NewEncoder(reflect.TypeOf(tt.Bts))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var opts []Option
+		if tt.NUC {
+			opts = append(opts, NoUTF8Coercion)
+		}
+		var buf bytes.Buffer
+		if err := enc.Encode(tt.Bts, &buf, opts...); err != nil {
+			t.Fatal(err)
+		}
+		if s := buf.String(); s != tt.Want {
+			t.Errorf("got %#q, want %#q", s, tt.Want)
+		}
+	}
+}
+
 func TestBytesEscaping(t *testing.T) {
 	testdata := []struct {
 		in, out string
@@ -1806,11 +1895,11 @@ func TestBytesEscaping(t *testing.T) {
 		{"\x05", `"\u0005"`},
 		{"\x06", `"\u0006"`},
 		{"\x07", `"\u0007"`},
-		{"\x08", `"\b"`},
+		{"\x08", `"\u0008"`},
 		{"\x09", `"\t"`},
 		{"\x0a", `"\n"`},
 		{"\x0b", `"\u000b"`},
-		{"\x0c", `"\f"`},
+		{"\x0c", `"\u000c"`},
 		{"\x0d", `"\r"`},
 		{"\x0e", `"\u000e"`},
 		{"\x0f", `"\u000f"`},
@@ -2098,7 +2187,14 @@ func BenchmarkSimplePayload(b *testing.B) {
 		var buf bytes.Buffer
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(sp, &buf); err != nil {
+			// NoUTF8Coercion and NoHTMLEscaping are used to
+			// have a fair comparison with Gojay, which does
+			// not coerce strings to valid UTF-8 and doesn't
+			// escape HTML characters either.
+			// None of the string fields of the SimplePayload
+			// type contains HTML characters nor contains invalid
+			// UTF-8 byte sequences, so this is fine.
+			if err := enc.Encode(sp, &buf, NoUTF8Coercion, NoHTMLEscaping); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(buf.Len()))
@@ -2291,6 +2387,36 @@ func benchMap(enc *Encoder, m map[string]int, opts ...Option) func(b *testing.B)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			if err := enc.Encode(&m, &buf, opts...); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(buf.Len()))
+			buf.Reset()
+		}
+	}
+}
+
+func BenchmarkStringEscaping(b *testing.B) {
+	s := "<ŁØŘ€M ƗƤŞỮM ĐØŁØŘ ŞƗŦ ΔM€Ŧ>"
+
+	enc, err := NewEncoder(reflect.TypeOf(s))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("Full escaping", benchEscaping(enc, s))
+	b.Run("No UTF-8 coercion", benchEscaping(enc, s, NoUTF8Coercion))
+	b.Run("No HTML escaping", benchEscaping(enc, s, NoHTMLEscaping))
+	b.Run("No UTF-8 coercion & No HTML escaping", benchEscaping(enc, s, NoUTF8Coercion, NoHTMLEscaping))
+	b.Run("No escaping", benchEscaping(enc, s, NoStringEscaping))
+}
+
+//nolint:unparam
+func benchEscaping(enc *Encoder, s string, opts ...Option) func(b *testing.B) {
+	var buf bytes.Buffer
+	return func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := enc.Encode(s, &buf, opts...); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(buf.Len()))

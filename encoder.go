@@ -98,6 +98,8 @@ type encodeState struct {
 	nilMapEmpty       bool
 	nilSliceEmpty     bool
 	noStringEscape    bool
+	noUTF8Coercion    bool
+	noHTMLEscape      bool
 }
 
 func newState() *encodeState {
@@ -120,6 +122,8 @@ func (s *encodeState) Reset() {
 	s.nilMapEmpty = false
 	s.nilSliceEmpty = false
 	s.noStringEscape = false
+	s.noUTF8Coercion = false
+	s.noHTMLEscape = false
 }
 
 // UnsupportedTypeError is the error returned by
@@ -198,12 +202,6 @@ func NewEncoder(rt reflect.Type) (*Encoder, error) {
 	return &Encoder{typ: rt}, nil
 }
 
-// Compile generates the encoder's instructions.
-// Calling this method more than once is a noop.
-func (e *Encoder) Compile() error {
-	return e.compile()
-}
-
 // TimeLayout sets the time layout used to
 // encode a time.Time value.
 func TimeLayout(layout string) Option {
@@ -257,6 +255,18 @@ func NoStringEscaping(es *encodeState) {
 	es.noStringEscape = true
 }
 
+// NoHTMLEscaping disables the escaping of HTML
+// characters when encoding JSON strings.
+func NoHTMLEscaping(es *encodeState) {
+	es.noHTMLEscape = true
+}
+
+// NoUTF8Coercion disables UTF-8 coercion
+// when encoding JSON strings.
+func NoUTF8Coercion(es *encodeState) {
+	es.noUTF8Coercion = true
+}
+
 // Encode writes the JSON encoding of i to w.
 func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
 	if w == nil {
@@ -274,6 +284,23 @@ func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
 	typ := reflect.TypeOf(i)
 
 	return e.encode(typ, i, w, opts...)
+}
+
+// Compile generates the encoder's instructions.
+// Calling this method more than once is a noop.
+func (e *Encoder) Compile() error {
+	return e.compile()
+}
+
+func (e *Encoder) compile() error {
+	var err error
+	e.once.Do(func() {
+		if e.typ.Kind() == reflect.Ptr {
+			e.typ = e.typ.Elem()
+		}
+		err = e.genInstr(e.typ)
+	})
+	return err
 }
 
 func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Option) error {
@@ -325,21 +352,10 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 	return nil
 }
 
-func (e *Encoder) compile() error {
-	var err error
-	e.once.Do(func() {
-		if e.typ.Kind() == reflect.Ptr {
-			e.typ = e.typ.Elem()
-		}
-		err = e.encodeType(e.typ)
-	})
-	return err
-}
-
-// encodeType generates the instruction required to encode
+// genInstr generates the instruction required to encode
 // the given type. It returns an error if the type is not
 // supported, such as channel, complex and function values.
-func (e *Encoder) encodeType(t reflect.Type) error {
+func (e *Encoder) genInstr(t reflect.Type) error {
 	ins, err := cachedTypeInstr(t)
 	if err != nil {
 		return err
