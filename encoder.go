@@ -247,7 +247,9 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 
 	// Apply options to state.
 	for _, o := range opts {
-		o(es)
+		if o != nil {
+			o(es)
+		}
 	}
 	// Execute the instruction with the state
 	// and the given writer.

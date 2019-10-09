@@ -640,6 +640,53 @@ func TestStructFieldName(t *testing.T) {
 	}
 }
 
+// TestStructFieldNameHTMLEscaping tests that HTML
+// characters inside struct field names are escaped.
+func TestStructFieldNameHTMLEscaping(t *testing.T) {
+	type Y struct {
+		S string
+	}
+	type x struct {
+		A int  `json:"ben&jerry"`
+		B *int `json:"a>2"`
+		C struct {
+			*Y `json:"6<b"`
+		}
+		D bool `json:""`
+	}
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	xx := &x{}
+
+	for _, opt := range []Option{nil, NoHTMLEscaping} {
+		var buf1, buf2 bytes.Buffer
+		if err := enc.Encode(xx, &buf1, opt); err != nil {
+			t.Fatal(err)
+		}
+		jenc := json.NewEncoder(&buf2)
+		if opt != nil {
+			jenc.SetEscapeHTML(false)
+		}
+		if err := jenc.Encode(xx); err != nil {
+			t.Fatal(err)
+		}
+		jettison := buf1.String()
+		// json.Encoder.Encode returns the JSON
+		// encoding of the given value followed
+		// by a newline character.
+		standard := strings.TrimSuffix(buf2.String(), "\n")
+
+		t.Logf("standard: %s", standard)
+		t.Logf("jettison: %s", jettison)
+
+		if jettison != standard {
+			t.Error("expected outputs to be equal")
+		}
+	}
+}
+
 // TestStructFieldOmitempty tests that the fields of
 // a struct with the omitempty option are not encoded
 // when they have the zero-value of their type.

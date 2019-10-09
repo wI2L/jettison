@@ -1,10 +1,11 @@
 package jettison
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 	"unsafe"
@@ -13,14 +14,15 @@ import (
 const validFieldNameChars = "!#$%&()*+-./:<=>?@[]^_{|}~ "
 
 type field struct {
-	name      string
-	keyBytes  []byte
-	sf        reflect.StructField
-	typ       reflect.Type
-	index     []int
-	tag       bool
-	quoted    bool
-	omitEmpty bool
+	name       string
+	keyNonEsc  []byte
+	keyEscHTML []byte
+	sf         reflect.StructField
+	typ        reflect.Type
+	index      []int
+	tag        bool
+	quoted     bool
+	omitEmpty  bool
 
 	// offsetSeq is the sequence of offsets
 	// between top-level pointer to field.
@@ -127,7 +129,7 @@ func newStructFieldInstr(f field) (Instruction, error) {
 		)
 	}
 	// If f is an embedded pointer field and there
-	// is no other fields in the struct, the received
+	// is no other fields in the parent, the received
 	// pointer points to the field itself.
 	if f.sf.Anonymous && f.pfc == 1 && isPtr {
 		return wrapAnonymousFieldInstr(instr, f), nil
@@ -150,7 +152,7 @@ func newStructFieldInstr(f field) (Instruction, error) {
 func wrapSetAddressable(instr Instruction, canAddr bool) Instruction {
 	if canAddr {
 		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			es.addressable = canAddr
+			es.addressable = true
 			err := instr(p, w, es)
 			es.addressable = false
 			return err
@@ -163,8 +165,9 @@ func wrapSetAddressable(instr Instruction, canAddr bool) Instruction {
 // of instr that encode a solitary anonymous field.
 func wrapAnonymousFieldInstr(instr Instruction, f field) Instruction {
 	var (
-		key  = f.keyBytes
-		omit = f.omitEmpty
+		key    = f.keyNonEsc
+		keyEsc = f.keyEscHTML
+		omit   = f.omitEmpty
 	)
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
 		// Input value may be a typed nil.
@@ -179,7 +182,11 @@ func wrapAnonymousFieldInstr(instr Instruction, f field) Instruction {
 				return nil
 			}
 		}
-		if err := writeFieldKey(key, w, es); err != nil {
+		k := keyEsc
+		if es.noHTMLEscape {
+			k = key
+		}
+		if err := writeFieldKey(k, w, es); err != nil {
 			return err
 		}
 		if p == nilptr {
@@ -195,7 +202,8 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 	// in the instruction to avoid keeping a
 	// reference to f.
 	var (
-		key    = f.keyBytes
+		key    = f.keyNonEsc
+		keyEsc = f.keyEscHTML
 		omit   = f.omitEmpty
 		offset = f.sf.Offset
 	)
@@ -207,7 +215,11 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 			if omit && p == nilptr {
 				return nil
 			}
-			if err := writeFieldKey(key, w, es); err != nil {
+			k := keyEsc
+			if es.noHTMLEscape {
+				k = key
+			}
+			if err := writeFieldKey(k, w, es); err != nil {
 				return err
 			}
 			if p == nilptr {
@@ -222,7 +234,11 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 		if omit && isEmpty(p, ft) {
 			return nil
 		}
-		if err := writeFieldKey(key, w, es); err != nil {
+		k := keyEsc
+		if es.noHTMLEscape {
+			k = key
+		}
+		if err := writeFieldKey(k, w, es); err != nil {
 			return err
 		}
 		return instr(p, w, es)
@@ -344,6 +360,8 @@ func dominantField(fields []field) (field, bool) {
 }
 
 func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []field) {
+	var escBuf bytes.Buffer
+
 	for i := 0; i < f.typ.NumField(); i++ {
 		sf := f.typ.Field(i)
 
@@ -369,8 +387,8 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 		if ft.Name() == "" && isPtr {
 			ft = ft.Elem()
 		}
-		// If the field is a named embedded struct or a simple
-		// field, record it and its index sequence.
+		// If the field is a named embedded struct or a
+		// simple field, record it and its index sequence.
 		if name != "" || !sf.Anonymous || ft.Kind() != reflect.Struct {
 			tagged := name != ""
 			// If a name is not present in the tag,
@@ -378,21 +396,33 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 			if name == "" {
 				name = sf.Name
 			}
+			// Build HTML escaped field key.
+			escBuf.Reset()
+			escBuf.WriteString(`,"`)
+			json.HTMLEscape(&escBuf, []byte(name))
+			escBuf.WriteString(`":`)
+
 			fields = append(fields, field{
-				typ:       ft,
-				sf:        sf,
-				name:      name,
-				tag:       tagged,
-				index:     index,
-				omitEmpty: opts.Contains("omitempty"),
-				quoted:    opts.Contains("string") && isPrimitiveType(ft),
-				keyBytes:  []byte("," + strconv.Quote(name) + ":"),
-				offsetSeq: f.offsetSeq,
-				indirSeq:  f.indirSeq,
-				countSeq:  f.countSeq,
-				pfc:       f.typ.NumField(),
+				typ:        ft,
+				sf:         sf,
+				name:       name,
+				tag:        tagged,
+				index:      index,
+				omitEmpty:  opts.Contains("omitempty"),
+				quoted:     opts.Contains("string") && isPrimitiveType(ft),
+				keyNonEsc:  []byte(`,"` + name + `":`),
+				keyEscHTML: append([]byte{}, escBuf.Bytes()...), // copy
+				offsetSeq:  f.offsetSeq,
+				indirSeq:   f.indirSeq,
+				countSeq:   f.countSeq,
+				pfc:        f.typ.NumField(),
 			})
 			if cnt[f.typ] > 1 {
+				// If there were multiple instances, add a
+				// second, so that the annihilation code will
+				// see a duplicate. It only cares about the
+				// distinction between 1 or 2, so don't bother
+				// generating any more copies.
 				fields = append(fields, fields[len(fields)-1])
 			}
 			continue
@@ -432,11 +462,14 @@ func sortFields(fields []field) {
 }
 
 //nolint:interfacer
+// Keep this function costless so that
+// it can be inlined by the compiler.
 func writeFieldKey(key []byte, w Writer, es *encodeState) error {
-	// Keep this function costless so that
-	// it can be inlined by the compiler.
 	if !es.firstField {
 		// Omit leading comma for first field.
+		// Key cannot be nil or empty, because
+		// the scanFields methods always quote
+		// the name and prepend a comma.
 		key, es.firstField = key[1:], true
 	}
 	_, err := w.Write(key)
