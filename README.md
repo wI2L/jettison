@@ -61,7 +61,7 @@ type X struct {
    A string `json:"a"`
    B int64  `json:"b"`
 }
-b, err := jettison.Marshal(x{
+b, err := jettison.Marshal(X{
    A: "Loreum",
    B: 42,
 })
@@ -87,11 +87,11 @@ import (
    "github.com/wI2L/jettison"
 )
 
-type x struct {
+type X struct {
     A string `json:"a,omitempty"`
     B int    `json:"b"`
 }
-enc, err := jettison.NewEncoder(reflect.TypeOf(x{}))
+enc, err := jettison.NewEncoder(reflect.TypeOf(X{}))
 if err != nil {
     // handle error
 }
@@ -99,7 +99,7 @@ err = enc.Compile()
 if err != nil {
     // handle error
 }
-xx := x{
+xx := X{
     A: "Loreum",
     B: 42,
 }
