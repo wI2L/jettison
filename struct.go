@@ -171,25 +171,25 @@ func wrapAnonymousFieldInstr(instr Instruction, f field) Instruction {
 	)
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
 		// Input value may be a typed nil.
-		if omit && p == nilptr {
+		if omit && p == nil {
 			return nil
 		}
 		// Dereference if the input eface given to
 		// Encode holds a pointer.
-		if p != nilptr && es.inputPtr {
+		if p != nil && es.inputPtr {
 			p = *(*unsafe.Pointer)(p)
-			if omit && p == nilptr {
+			if omit && p == nil {
 				return nil
 			}
 		}
 		k := keyEsc
-		if es.noHTMLEscape {
+		if es.opts.noHTMLEscape {
 			k = key
 		}
 		if err := writeFieldKey(k, w, es); err != nil {
 			return err
 		}
-		if p == nilptr {
+		if p == nil {
 			_, err := w.WriteString("null")
 			return err
 		}
@@ -209,20 +209,20 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 	)
 	if isPtr {
 		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			if p != nilptr {
+			if p != nil {
 				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(uintptr(p) + offset)))
 			}
-			if omit && p == nilptr {
+			if omit && p == nil {
 				return nil
 			}
 			k := keyEsc
-			if es.noHTMLEscape {
+			if es.opts.noHTMLEscape {
 				k = key
 			}
 			if err := writeFieldKey(k, w, es); err != nil {
 				return err
 			}
-			if p == nilptr {
+			if p == nil {
 				_, err := w.WriteString("null")
 				return err
 			}
@@ -235,7 +235,7 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 			return nil
 		}
 		k := keyEsc
-		if es.noHTMLEscape {
+		if es.opts.noHTMLEscape {
 			k = key
 		}
 		if err := writeFieldKey(k, w, es); err != nil {
@@ -246,23 +246,27 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 }
 
 func indirInstr(instr Instruction, f field) Instruction {
+	var (
+		indirSeq  = f.indirSeq
+		offsetSeq = f.offsetSeq
+		countSeq  = f.countSeq
+	)
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		if p == nilptr {
+		if p == nil {
 			return nil
 		}
-		for i, indir := range f.indirSeq {
-			p = unsafe.Pointer(uintptr(p) + f.offsetSeq[i])
+		for i, indir := range indirSeq {
+			p = unsafe.Pointer(uintptr(p) + offsetSeq[i])
 			if indir {
-				if i == len(f.indirSeq)-1 && f.countSeq[0] == 1 && !es.inputPtr {
+				if i == len(indirSeq)-1 && countSeq[0] == 1 && !es.inputPtr {
 					break
 				}
-				if p != nilptr {
+				if p != nil {
 					p = *(*unsafe.Pointer)(p)
 				}
-				if p == nilptr {
+				if p == nil {
 					return nil
 				}
-				continue
 			}
 		}
 		return instr(p, w, es)
@@ -398,9 +402,9 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 			}
 			// Build HTML escaped field key.
 			escBuf.Reset()
-			escBuf.WriteString(`,"`)
+			_, _ = escBuf.WriteString(`,"`)
 			json.HTMLEscape(&escBuf, []byte(name))
-			escBuf.WriteString(`":`)
+			_, _ = escBuf.WriteString(`":`)
 
 			fields = append(fields, field{
 				typ:        ft,

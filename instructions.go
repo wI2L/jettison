@@ -31,10 +31,10 @@ const (
 const defaultTimeLayout = time.RFC3339Nano
 
 var (
-	nilptr            = unsafe.Pointer(nil)
 	timeType          = reflect.TypeOf(time.Time{})
 	durationType      = reflect.TypeOf(time.Duration(0))
 	numberType        = reflect.TypeOf(json.Number(""))
+	marshalerType     = reflect.TypeOf((*Marshaler)(nil)).Elem()
 	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 )
@@ -135,10 +135,10 @@ def:
 			return nil, err
 		}
 		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			if p != nilptr {
+			if p != nil {
 				p = *(*unsafe.Pointer)(p)
 			}
-			if p == nilptr {
+			if p == nil {
 				_, err := w.WriteString("null")
 				return err
 			}
@@ -154,6 +154,14 @@ def:
 }
 
 func marshalerInstr(t reflect.Type) Instruction {
+	if t.Implements(marshalerType) {
+		return newMarshalerInstr(t)
+	}
+	if t.Kind() != reflect.Ptr {
+		if reflect.PtrTo(t).Implements(marshalerType) {
+			return newAddrMarshalerInstr(t)
+		}
+	}
 	if t.Implements(jsonMarshalerType) {
 		return newJSONMarshalerInstr(t)
 	}
@@ -171,6 +179,45 @@ func marshalerInstr(t reflect.Type) Instruction {
 		}
 	}
 	return nil
+}
+
+// newMarshalerInstr returns an instruction to
+// encode a type which have a pointer receiver, by
+// using its WriteJSON method.
+func newMarshalerInstr(t reflect.Type) Instruction {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p).Elem()
+
+		m, ok := v.Interface().(Marshaler)
+		if !ok {
+			_, err := w.WriteString("null")
+			return err
+		}
+		if err := m.WriteJSON(w); err != nil {
+			return &MarshalerError{err, t, jettisonMarshalerCtx}
+		}
+		return nil
+	}
+}
+
+// newAddrMarshalerInstr returns an instruction to
+// encode a type which have a non-pointer receiver, by
+// using its WriteJSON method.
+func newAddrMarshalerInstr(t reflect.Type) Instruction {
+	// Fallback instruction for non-addressable values.
+	finstr, _ := newTypeInstr(t, true)
+
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		if !es.addressable && !es.inputPtr {
+			return finstr(p, w, es)
+		}
+		v := reflect.NewAt(t, p)
+		m := v.Interface().(Marshaler)
+		if err := m.WriteJSON(w); err != nil {
+			return &MarshalerError{err, reflect.PtrTo(t), jettisonMarshalerCtx}
+		}
+		return nil
+	}
 }
 
 // newJSONMarshalerInstr returns an instruction to
@@ -195,18 +242,17 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 }
 
 // newAddrJSONMarshalerInstr returns an instruction to
-// encode the a type which have a non-pointer receiver,
-// by using its MarshalJSON method.
+// encode a type which have a non-pointer receiver, by
+// using its MarshalJSON method.
 func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 	// Fallback instruction for non-addressable values.
 	finstr, _ := newTypeInstr(t, true)
 
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		v := reflect.NewAt(t, p)
-
 		if !es.addressable && !es.inputPtr {
 			return finstr(p, w, es)
 		}
+		v := reflect.NewAt(t, p)
 		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
@@ -218,9 +264,10 @@ func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 }
 
 // newTextMarshalerInstr returns an instruction to
-// encode the given type using its MarshalText method.
-// The instruction quotes the result returned by the
-// invocation of the method.
+// encode a type which have a pointer receiver, by
+// using its MarshalText method.
+// The instruction quotes the result returned by
+// the the method.
 func newTextMarshalerInstr(t reflect.Type) Instruction {
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
 		v := reflect.NewAt(t, p).Elem()
@@ -240,19 +287,20 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 	}
 }
 
-// newAddrTextMarshalerInstr returns an instruction to
-// encode the a type which have a non-pointer receiver,
+// newAddrTextMarshalerInstr returns an instruction
+// to encode a type which have a non-pointer receiver,
 // by using its MarshalText method.
+// The instruction quotes the result returned by the
+// method.
 func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 	// Fallback instruction for non-addressable values.
 	finstr, _ := newTypeInstr(t, true)
 
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		v := reflect.NewAt(t, p)
-
 		if !es.addressable && !es.inputPtr {
 			return finstr(p, w, es)
 		}
+		v := reflect.NewAt(t, p)
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
@@ -365,39 +413,24 @@ func spb(p unsafe.Pointer) []byte {
 	}))
 }
 
-// isSafeJSONChar returns whether the char c
-// can be used in a JSON string without escaping.
-func isSafeJSONChar(c byte) bool {
-	if c < 0x20 || c == '"' || c == '\\' {
-		return false
-	}
-	return true
-}
-
-func isHTMLChar(c byte) bool {
-	if c == '&' || c == '<' || c == '>' {
-		return true
-	}
-	return false
-}
-
 func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 	if len(b) == 0 {
 		return nil
 	}
 	at := 0
-	if es.noStringEscape {
+	if es.opts.noStringEscape {
 		goto end
 	}
 	for i := 0; i < len(b); {
-		if c := b[i]; c < utf8.RuneSelf {
-			// If the current character doesn't need
-			// to be escaped, accumulate the bytes to
-			// save some write operations.
+		c := b[i]
+		if c < utf8.RuneSelf {
 			if isSafeJSONChar(c) {
-				if !es.noHTMLEscape && isHTMLChar(c) {
+				if !es.opts.noHTMLEscape && isHTMLChar(c) {
 					goto escape
 				}
+				// If the current character doesn't need
+				// to be escaped, accumulate the bytes to
+				// save some write operations.
 				i++
 				continue
 			}
@@ -440,7 +473,7 @@ func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 			at = i
 			continue
 		}
-		if !es.noUTF8Coercion {
+		if !es.opts.noUTF8Coercion {
 			c, size := utf8.DecodeRune(b[i:])
 
 			// Coerce to valid UTF-8, by replacing invalid
@@ -495,6 +528,22 @@ end:
 		}
 	}
 	return nil
+}
+
+// isSafeJSONChar returns whether c can be
+// used in a JSON string without escaping.
+func isSafeJSONChar(c byte) bool {
+	if c < 0x20 || c == '"' || c == '\\' {
+		return false
+	}
+	return true
+}
+
+func isHTMLChar(c byte) bool {
+	if c == '&' || c == '<' || c == '>' {
+		return true
+	}
+	return false
 }
 
 //nolint:interfacer
@@ -623,7 +672,7 @@ func byteSliceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		return err
 	}
 	var err error
-	if es.noBase64Slice {
+	if es.opts.noBase64Slice {
 		err = writeEscapedBytes(b, w, es)
 	} else {
 		err = writeBase64ByteSlice(b, w, es)
@@ -736,13 +785,13 @@ func timeInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		// see issue golang.org/issue/4556#c15
 		return errors.New("time: year outside of range [0,9999]")
 	}
-	if es.useTimestamps {
+	if es.opts.useTimestamps {
 		ts := t.Unix()
 		b := strconv.AppendInt(es.scratch[:0], ts, 10)
 		_, err := w.Write(b)
 		return err
 	}
-	b := t.AppendFormat(es.scratch[:0], es.timeLayout)
+	b := t.AppendFormat(es.scratch[:0], es.opts.timeLayout)
 	if err := w.WriteByte('"'); err != nil {
 		return err
 	}
@@ -756,7 +805,7 @@ func timeInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 	d := *(*time.Duration)(p)
 
-	if es.durationFmt == DurationString {
+	if es.opts.durationFmt == DurationString {
 		s := d.String()
 		b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
 			Data: (*reflect.StringHeader)(unsafe.Pointer(&s)).Data,
@@ -771,7 +820,7 @@ func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		}
 		return w.WriteByte('"')
 	}
-	switch es.durationFmt {
+	switch es.opts.durationFmt {
 	case DurationMinutes:
 		f := d.Minutes()
 		return floatInstr(unsafe.Pointer(&f), w, es, 64)
@@ -788,7 +837,7 @@ func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		i := d.Nanoseconds()
 		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
 	}
-	return fmt.Errorf("unknown duration format: %v", es.durationFmt)
+	return fmt.Errorf("unknown duration format: %v", es.opts.durationFmt)
 }
 
 // interfaceInstr writes an interface value to w.
@@ -858,7 +907,7 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 	length := t.Len()
 
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
-		if es.byteArrayAsString && isByteArray {
+		if es.opts.byteArrayAsString && isByteArray {
 			return writeByteArrayAsString(v, w, es, length)
 		}
 		if err := w.WriteByte('['); err != nil {
@@ -875,7 +924,7 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 				p = unsafe.Pointer(*(*uintptr)(
 					unsafe.Pointer(uintptr(v) + (uintptr(i) * esz))),
 				)
-				if p == nilptr {
+				if p == nil {
 					if _, err := w.WriteString("null"); err != nil {
 						return err
 					}
@@ -925,7 +974,7 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
 		shdr := *(*reflect.SliceHeader)(v)
 		if shdr.Data == zero {
-			if es.nilSliceEmpty {
+			if es.opts.nilSliceEmpty {
 				_, err := w.WriteString("[]")
 				return err
 			}
@@ -948,7 +997,7 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 			var p unsafe.Pointer
 			if isPtr {
 				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(shdr.Data + (i * esz))))
-				if p == nilptr {
+				if p == nil {
 					if _, err := w.WriteString("null"); err != nil {
 						return err
 					}
@@ -1004,8 +1053,8 @@ func newMapInstr(t reflect.Type) (Instruction, error) {
 
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
 		p := *(*unsafe.Pointer)(v)
-		if p == nilptr {
-			if es.nilMapEmpty {
+		if p == nil {
+			if es.opts.nilMapEmpty {
 				_, err := w.WriteString("{}")
 				return err
 			}
@@ -1016,7 +1065,7 @@ func newMapInstr(t reflect.Type) (Instruction, error) {
 			return err
 		}
 		it := mtyp.UnsafeIterate(v)
-		if !es.unsortedMap {
+		if !es.opts.unsortedMap {
 			if err := encodeSortedMap(it, w, es, kinstr, vinstr); err != nil {
 				return err
 			}

@@ -41,6 +41,8 @@ type Encoder struct {
 }
 
 type encodeState struct {
+	opts encodeOpts
+
 	// inputPtr indicates if the input
 	// value to encode is a pointer.
 	inputPtr bool
@@ -54,12 +56,16 @@ type encodeState struct {
 	// field of an object has been written.
 	firstField bool
 
+	// addressable tracks whether the value
+	// to encode is addressable.
 	addressable bool
+}
 
-	// Runtime options.
-	// All are optin-in only or have default
-	// values to comply with the std library
-	// behavior.
+// encodeOpts represents the runtime options
+// of an encoder. All options are opt-in and
+// have a default value that comply with the
+// standard library behavior.
+type encodeOpts struct {
 	timeLayout        string
 	useTimestamps     bool
 	durationFmt       DurationFmt
@@ -79,22 +85,24 @@ func newState() *encodeState {
 		s.Reset()
 		return s
 	}
-	return &encodeState{timeLayout: defaultTimeLayout}
+	return &encodeState{opts: encodeOpts{
+		timeLayout: defaultTimeLayout},
+	}
 }
 
 func (s *encodeState) Reset() {
 	s.firstField = false
-	s.timeLayout = defaultTimeLayout
-	s.useTimestamps = false
-	s.durationFmt = DurationString
-	s.unsortedMap = false
-	s.noBase64Slice = false
-	s.byteArrayAsString = false
-	s.nilMapEmpty = false
-	s.nilSliceEmpty = false
-	s.noStringEscape = false
-	s.noUTF8Coercion = false
-	s.noHTMLEscape = false
+	s.opts.timeLayout = defaultTimeLayout
+	s.opts.useTimestamps = false
+	s.opts.durationFmt = DurationString
+	s.opts.unsortedMap = false
+	s.opts.noBase64Slice = false
+	s.opts.byteArrayAsString = false
+	s.opts.nilMapEmpty = false
+	s.opts.nilSliceEmpty = false
+	s.opts.noStringEscape = false
+	s.opts.noUTF8Coercion = false
+	s.opts.noHTMLEscape = false
 }
 
 // UnsupportedTypeError is the error returned by
@@ -139,28 +147,29 @@ func (e *TypeMismatchError) Error() string {
 type marshalerCtx string
 
 const (
-	jsonMarshalerCtx marshalerCtx = "JSON"
-	textMarshalerCtx marshalerCtx = "Text"
+	jsonMarshalerCtx     marshalerCtx = "JSON"
+	textMarshalerCtx     marshalerCtx = "Text"
+	jettisonMarshalerCtx marshalerCtx = "Jettison"
 )
 
 // MarshalerError represents an error from calling
 // a MarshalJSON or MarshalText method.
 type MarshalerError struct {
-	err error
+	Err error
 	Typ reflect.Type
 	ctx marshalerCtx
 }
 
 // Error implements the builtin error interface.
 func (e *MarshalerError) Error() string {
-	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.err)
+	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.Err)
 }
 
 // Unwrap returns the wrapped error.
 // This doesn't implement a public interface, but
 // allow to use the errors.Unwrap function released
 // in Go 1.13 with a MarshalerError.
-func (e *MarshalerError) Unwrap() error { return e.err }
+func (e *MarshalerError) Unwrap() error { return e.Err }
 
 // NewEncoder returns a new encoder that can marshal the
 // values of the given type. The Encoder can be explicitly
@@ -209,10 +218,10 @@ func (e *Encoder) compile() error {
 	return err
 }
 
-func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Option) error {
+func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option) error {
 	var p unsafe.Pointer
 
-	if typ.Kind() == reflect.Map {
+	if t.Kind() == reflect.Map {
 		// Value is not addressable, create a new
 		// pointer of the type and assign the value.
 		v := reflect.ValueOf(i)
@@ -224,7 +233,7 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 		// Unpack eface and use the data pointer.
 		p = reflect2.PtrOf(i)
 	}
-	if p == nilptr {
+	if p == nil {
 		// The exception for the struct type comes
 		// from the fact that the pointer may points
 		// to an anonymous struct field that should
@@ -235,12 +244,12 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 			return err
 		}
 	}
-	isPtr := typ.Kind() == reflect.Ptr
+	isPtr := t.Kind() == reflect.Ptr
 	if isPtr {
-		typ = typ.Elem()
+		t = t.Elem()
 	}
-	if typ != e.typ {
-		return &TypeMismatchError{SrcType: typ, EncType: e.typ}
+	if t != e.typ {
+		return &TypeMismatchError{SrcType: t, EncType: e.typ}
 	}
 	es := newState()
 	es.inputPtr = isPtr
@@ -248,7 +257,7 @@ func (e *Encoder) encode(typ reflect.Type, i interface{}, w Writer, opts ...Opti
 	// Apply options to state.
 	for _, o := range opts {
 		if o != nil {
-			o(es)
+			o(&es.opts)
 		}
 	}
 	// Execute the instruction with the state

@@ -13,17 +13,16 @@
 
 ---
 
-### Installation
+## Installation
 
 Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the _SemVer_ format, prefixed with a `v`, starting from `0.2.0`. You can get the latest release using the following command.
 
 ```sh
 $ go get github.com/wI2L/jettison
 ```
+:warning: Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
 
-> :exclamation: Requires Go1.12+, due to the usage of `io.StringWriter`.
-
-### Key points
+## Key features
 
 - Fast, see [benchmarks](#benchmarks)
 - Zero allocations on average
@@ -31,10 +30,11 @@ $ go get github.com/wI2L/jettison
 - No code generation required
 - Clear and simple API
 - Options available to configure encoding
-- Native support for `time.Time` and `time.Duration`
+- Native support for `time.Time` and `time.Duration` types
+- Custom `Marshaler` interface to work with a `Writer`
 - Extensive testsuite
 
-### Overview
+## Overview
 
 The goal of Jettision is to take up the idea introduced by the **bet365/jingo** package and build a fully-featured JSON encoder around it, that comply with the behavior of the [encoding/json](https://golang.org/pkg/encoding/json/) package. Unlike the latter, Jettison does not use reflection during marshaling, but only once to create the instruction set for a given type ahead of time. The drawback to this approach requires to instantiate an encoder once for each type that needs to be marshaled.
 
@@ -44,15 +44,20 @@ The package aims to have a behavior similar to that of the standard library for 
 
 The main concept of Jettison consists of using pre-build encoders to reduce the cost of using the `reflect` package at runtime. When a new instance of an encoder is created for a specific type, a set of _instructions_ is recursively generated, which defines how to iteratively encode a value. An _instruction_ is a function or a closure, that have all the information required to read the data from memory using _unsafe_ operations during the instruction set execution.
 
-### Usage
+## Usage
 
-#### Basic
+### Basic
 
 Starting from version 0.3.0, the `Marshal` and `MarshalTo` functions are available. The first will allocate a new bytes slice to store the encoding of the given value, while the latter will write to the given stream. These functions use a package's cache to fetch the appropriate encoder for the given value type. If an encoder does not exist, a new one is created on the fly and stored in the cache for future reuse.
 
+
+<details>
+<summary>Example</summary>
+
 ```go
 import (
-   "fmt"
+   "log"
+   "os"
 
    "github.com/wI2L/jettison"
 )
@@ -66,22 +71,29 @@ b, err := jettison.Marshal(X{
    B: 42,
 })
 if err != nil {
-   // handle error
+   log.Fatal(err)
 }
-fmt.Println(string(b))
-// {"a":"Loreum","b":42}
+os.Stdout.Write(b)
 ```
+Output
+```json
+{"a":"Loreum","b":42}
+```
+</details>
 
-#### Advanced
+### Advanced
 
 If more control over the encoding behavior is required, or to avoid the latency of creating a new encoder when encoding a type for the first time, an encoder can be created ahead of time, during initialization. Note that if you don't invoke the `Compile` method, the instruction set will be generated once, on the first call to the `Encode` method.
 
 The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the above example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
 
+<details>
+<summary>Example</summary>
+
 ```go
 import (
    "bytes"
-   "fmt"
+   "os"
    "reflect"
 
    "github.com/wI2L/jettison"
@@ -93,11 +105,11 @@ type X struct {
 }
 enc, err := jettison.NewEncoder(reflect.TypeOf(X{}))
 if err != nil {
-    // handle error
+    log.Fatal(err)
 }
 err = enc.Compile()
 if err != nil {
-    // handle error
+    log.Fatal(err)
 }
 xx := X{
     A: "Loreum",
@@ -105,33 +117,39 @@ xx := X{
 }
 var buf bytes.Buffer
 if err := enc.Encode(&xx, &buf); err != nil {
-    // handle error
+    log.Fatal(err)
 }
-fmt.Println(buf.String())
-// {"a":"Loreum","b":42}
+os.Stdout.Write(b)
 ```
+Output
+```json
+{"a":"Loreum","b":42}
+```
+</details>
 
-### Options
+## Options
 
 Opt-in options are available to customize the behavior of the package. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-|                   Name | Description                                                                                                                                                                                  |
-| ---------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|           `TimeLayout` | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                     |
-|       `DurationFormat` | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                     |
-|        `UnixTimestamp` | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                      |
-|          `UnsortedMap` | Disables map keys sort. *See Map benchmark for performance gain*.                                                                                                                            |
-|    `ByteArrayAsString` | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used. |
-|        `RawByteSlices` | Disables *base64* default encoding used for byte slices.                                                                                                                                     |
-|          `NilMapEmpty` | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                   |
-|        `NilSliceEmpty` | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                  |
-|     `NoStringEscaping` | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                                        |
-|       `NoHTMLEscaping` | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.                                                   |
-|       `NoUTF8Coercion` | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                                 |
+|                   Name   | Description                                                                                                                                                                                  |
+| -----------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|           **TimeLayout** | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                     |
+|       **DurationFormat** | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                     |
+|        **UnixTimestamp** | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                      |
+|          **UnsortedMap** | Disables map keys sort. See [Map](#map) benchmark for performance gain.                                                                                                                      |
+|    **ByteArrayAsString** | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used. |
+|         **RawByteSlice** | Disables *base64* default encoding used for byte slices.                                                                                                                                     |
+|          **NilMapEmpty** | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                   |
+|        **NilSliceEmpty** | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                  |
+|     **NoStringEscaping** | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                                        |
+|       **NoHTMLEscaping** | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.                                                   |
+|       **NoUTF8Coercion** | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                                 |
 
-### Differences with `encoding/json`
+## Differences with `encoding/json`
 
-- `time.Time` and `time.Duration` types are handled natively by the package. For the first, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` directly. For the second, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
+- The `time.Time` and `time.Duration` types are handled natively by this package.
+  - For `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream.
+  - For `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
 
 - The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
 
@@ -141,13 +159,14 @@ Opt-in options are available to customize the behavior of the package. The third
 
 <sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
 
-### Benchmarks
+## Benchmarks
 
 > Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
 > go version go1.13 linux/amd64   
 > jettison v0.3.0
 
-#### Simple
+### Simple
+
 
 Basic object with fields of type `string`, `int` and `bool`. [source](https://github.com/wI2L/jettison/blob/master/encoder_test.go#L1206)
 
@@ -179,7 +198,7 @@ SimplePayload/gojay-4        1.00 ± 0%
 SimplePayload/jettison-4     0.00
 </pre></details>
 
-#### Complex
+### Complex
 
 Payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types. [source](https://github.com/wI2L/jettison/blob/master/encoder_test.go#L1299)
 
@@ -207,7 +226,7 @@ ComplexPayload/jsoniter-4     3.00 ± 0%
 ComplexPayload/jettison-4     0.00
 </pre></details>
 
-#### Interface
+### Interface
 
 <img src="images/iface-graph.png" alt="Interface Benchmark Graph">
 
@@ -233,7 +252,7 @@ Interface/jsoniter-4      1.00 ± 0%
 Interface/jettison-4      0.00
 </pre></details>
 
-#### Map
+### Map
 
 <img src="images/map-graph.png" alt="Map Benchmark Graph">
 

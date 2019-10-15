@@ -3,8 +3,10 @@ package jettison_test
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"reflect"
+	"strconv"
 
 	"github.com/wI2L/jettison"
 )
@@ -22,7 +24,7 @@ func ExampleMarshal() {
 	}
 	b, err := jettison.Marshal(&x)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Fatal(err)
 	}
 	os.Stdout.Write(b)
 	// Output:
@@ -46,7 +48,7 @@ func ExampleMarshalTo() {
 	var buf bytes.Buffer
 	err := jettison.MarshalTo(&x, &buf)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Fatal(err)
 	}
 	os.Stdout.Write(buf.Bytes())
 	// Output:
@@ -61,23 +63,64 @@ func ExampleEncoder_Encode() {
 	x := X{}
 	enc, err := jettison.NewEncoder(reflect.TypeOf(x))
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Fatal(err)
 	}
 	var buf bytes.Buffer
 	if err := enc.Encode(&x, &buf); err != nil {
-		fmt.Println("error:", err)
+		log.Fatal(err)
 	}
 	fmt.Printf("%s\n", buf.String())
 
 	buf.Reset()
 	if err := enc.Encode(&x, &buf,
-		jettison.NilMapEmpty,
-		jettison.NilSliceEmpty,
+		jettison.NilMapEmpty(),
+		jettison.NilSliceEmpty(),
 	); err != nil {
-		fmt.Println("error:", err)
+		log.Fatal(err)
 	}
 	fmt.Printf("%s\n", buf.String())
 	// Output:
 	// {"M":null,"S":null}
 	// {"M":{},"S":[]}
+}
+
+type Animal int
+
+const (
+	Unknown Animal = iota
+	Gopher
+	Zebra
+)
+
+func (a Animal) WriteJSON(w jettison.Writer) error {
+	var s string
+	switch a {
+	default:
+		s = "unknown"
+	case Gopher:
+		s = "gopher"
+	case Zebra:
+		s = "zebra"
+	}
+	_, err := w.WriteString(strconv.Quote(s))
+	return err
+}
+
+func Example_customMarshaler() {
+	zoo := []Animal{
+		Unknown,
+		Zebra,
+		Gopher,
+		Zebra,
+		Unknown,
+		Zebra,
+		Gopher,
+	}
+	b, err := jettison.Marshal(zoo)
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Stdout.Write(b)
+	// Output:
+	// ["unknown","zebra","gopher","zebra","unknown","zebra","gopher"]
 }

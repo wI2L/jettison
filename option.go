@@ -1,8 +1,8 @@
 package jettison
 
-// An option represents a particular behavior
+// Option overrides a particular behavior
 // of an encoder
-type Option func(*encodeState)
+type Option func(*encodeOpts)
 
 // DurationFmt represents the format used
 // to encode a time.Duration value.
@@ -32,64 +32,86 @@ func (df DurationFmt) String() string {
 // TimeLayout sets the time layout used to
 // encode time.Time values.
 func TimeLayout(layout string) Option {
-	return func(es *encodeState) { es.timeLayout = layout }
+	return func(o *encodeOpts) {
+		o.timeLayout = layout
+	}
 }
 
 // DurationFormat sets the format used to
 // encode time.Duration values.
 func DurationFormat(df DurationFmt) Option {
-	return func(es *encodeState) { es.durationFmt = df }
+	return func(o *encodeOpts) {
+		o.durationFmt = df
+	}
 }
 
 // UnixTimestamp configures the encoder to encode
 // time.Time values as Unix timestamps. This option
 // has precedence over any time layout.
-func UnixTimestamp(es *encodeState) {
-	es.useTimestamps = true
+func UnixTimestamp() Option {
+	return func(o *encodeOpts) {
+		o.useTimestamps = true
+	}
 }
 
 // UnsortedMap disables map keys sort.
-func UnsortedMap(es *encodeState) {
-	es.unsortedMap = true
+func UnsortedMap() Option {
+	return func(o *encodeOpts) {
+		o.unsortedMap = true
+	}
 }
 
 // ByteArrayAsString encodes byte arrays as
 // raw JSON strings.
-func ByteArrayAsString(es *encodeState) {
-	es.byteArrayAsString = true
+func ByteArrayAsString() Option {
+	return func(o *encodeOpts) {
+		o.byteArrayAsString = true
+	}
 }
 
-// RawByteSlices disables the default behavior that
+// RawByteSlice disables the default behavior that
 // encodes byte slices as base64-encoded strings.
-func RawByteSlices(es *encodeState) {
-	es.noBase64Slice = true
+func RawByteSlice() Option {
+	return func(o *encodeOpts) {
+		o.noBase64Slice = true
+	}
 }
 
 // NilMapEmpty encodes nil Go maps as
 // empty JSON objects, rather than null.
-func NilMapEmpty(es *encodeState) {
-	es.nilMapEmpty = true
+func NilMapEmpty() Option {
+	return func(o *encodeOpts) {
+		o.nilMapEmpty = true
+	}
 }
 
 // NilSliceEmpty encodes nil Go slices as
 // empty JSON arrays, rather than null.
-func NilSliceEmpty(es *encodeState) {
-	es.nilSliceEmpty = true
+func NilSliceEmpty() Option {
+	return func(o *encodeOpts) {
+		o.nilSliceEmpty = true
+	}
 }
 
 // NoStringEscaping disables strings escaping.
-func NoStringEscaping(es *encodeState) {
-	es.noStringEscape = true
+func NoStringEscaping() Option {
+	return func(o *encodeOpts) {
+		o.noStringEscape = true
+	}
 }
 
 // NoHTMLEscaping disables the escaping of HTML
 // characters when encoding JSON strings.
-func NoHTMLEscaping(es *encodeState) {
-	es.noHTMLEscape = true
+func NoHTMLEscaping() Option {
+	return func(o *encodeOpts) {
+		o.noHTMLEscape = true
+	}
 }
 
 // NoUTF8Coercion disables UTF-8 coercion
 // when encoding JSON strings.
-func NoUTF8Coercion(es *encodeState) {
-	es.noUTF8Coercion = true
+func NoUTF8Coercion() Option {
+	return func(o *encodeOpts) {
+		o.noUTF8Coercion = true
+	}
 }

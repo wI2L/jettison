@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	// imports for benchmarks
 	"github.com/francoispqt/gojay"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -274,10 +273,10 @@ func TestMap(t *testing.T) {
 		var buf bytes.Buffer
 		var opts []Option
 		if tt.NoSort {
-			opts = append(opts, UnsortedMap)
+			opts = append(opts, UnsortedMap())
 		}
 		if tt.NME {
-			opts = append(opts, NilMapEmpty)
+			opts = append(opts, NilMapEmpty())
 		}
 		if err := enc.Encode(tt.Val, &buf, opts...); err != nil {
 			t.Error(err)
@@ -322,7 +321,7 @@ func TestSlice(t *testing.T) {
 		var buf bytes.Buffer
 		var opts []Option
 		if tt.NME {
-			opts = append(opts, NilSliceEmpty)
+			opts = append(opts, NilSliceEmpty())
 		}
 		if err := enc.Encode(tt.Val, &buf, opts...); err != nil {
 			t.Error(err)
@@ -660,7 +659,7 @@ func TestStructFieldNameHTMLEscaping(t *testing.T) {
 	}
 	xx := &x{}
 
-	for _, opt := range []Option{nil, NoHTMLEscaping} {
+	for _, opt := range []Option{nil, NoHTMLEscaping()} {
 		var buf1, buf2 bytes.Buffer
 		if err := enc.Encode(xx, &buf1, opt); err != nil {
 			t.Fatal(err)
@@ -1422,7 +1421,7 @@ func TestTextMarshaler(t *testing.T) {
 	// S = Non-pointer receiver of composite type.
 	// I = Non-pointer receiver of primitive type.
 	// F = Pointer receiver of composite kind.
-	// P = Pointer receiver of primitive tyoe.
+	// P = Pointer receiver of primitive type.
 	type x struct {
 		S1 net.IP               `json:"s1"`
 		S2 net.IP               `json:"s2,omitempty"`
@@ -1489,6 +1488,7 @@ func TestTextMarshaler(t *testing.T) {
 type (
 	nilJSONMarshaler string
 	nilTextMarshaler string
+	nilMarshaler     string
 )
 
 func (nm *nilJSONMarshaler) MarshalJSON() ([]byte, error) {
@@ -1503,6 +1503,29 @@ func (nm *nilTextMarshaler) MarshalText() ([]byte, error) {
 		return []byte("Loreum"), nil
 	}
 	return nil, nil
+}
+
+func (nm *nilMarshaler) WriteJSON(w Writer) error {
+	if nm == nil {
+		_, err := w.WriteString(`"Loreum"`)
+		return err
+	}
+	return nil
+}
+
+func (nm *nilMarshaler) MarshalJSON() ([]byte, error) {
+	if nm == nil {
+		return []byte(strconv.Quote("Loreum")), nil
+	}
+	return nil, nil
+}
+
+// bothMarshaler combines the json.Marshaler and
+// the Marshaler interfaces so that the tests output
+// can be compared against encoding/json.
+type bothMarshaler interface {
+	Marshaler
+	json.Marshaler
 }
 
 // TestNilMarshaler tests that even if a nil interface
@@ -1527,6 +1550,13 @@ func TestNilMarshaler(t *testing.T) {
 		{v: struct{ M *nilTextMarshaler }{M: nil}},
 		{v: encoding.TextMarshaler((*nilTextMarshaler)(nil))},
 		{v: (*nilTextMarshaler)(nil)},
+
+		{v: struct{ M bothMarshaler }{M: nil}},
+		{v: struct{ M bothMarshaler }{(*nilMarshaler)(nil)}},
+		{v: struct{ M interface{} }{(*nilMarshaler)(nil)}},
+		{v: struct{ M *nilMarshaler }{M: nil}},
+		{v: bothMarshaler((*nilMarshaler)(nil))},
+		{v: (*nilMarshaler)(nil)},
 	}
 	for _, tt := range testdata {
 		enc, err := NewEncoder(reflect.TypeOf(tt.v))
@@ -1546,30 +1576,35 @@ func TestNilMarshaler(t *testing.T) {
 var errMarshaler = errors.New("")
 
 type (
-	errJSONMarshaler    struct{}
-	errJSONMarshalerPtr struct{}
+	errorJSONMarshaler    struct{}
+	errorPtrJSONMarshaler struct{}
+	errorTextMarshaler    struct{}
+	errorPtrTextMarshaler struct{}
+	errorMarshaler        struct{}
+	errorPtrMarshaler     struct{}
 )
 
-func (errJSONMarshaler) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
-func (errTextMarshaler) MarshalText() ([]byte, error) { return nil, errMarshaler }
+func (errorJSONMarshaler) MarshalJSON() ([]byte, error)     { return nil, errMarshaler }
+func (*errorPtrJSONMarshaler) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
 
-type (
-	errTextMarshaler    struct{}
-	errTextMarshalerPtr struct{}
-)
+func (errorTextMarshaler) MarshalText() ([]byte, error)     { return nil, errMarshaler }
+func (*errorPtrTextMarshaler) MarshalText() ([]byte, error) { return nil, errMarshaler }
 
-func (*errJSONMarshalerPtr) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
-func (*errTextMarshalerPtr) MarshalText() ([]byte, error) { return nil, errMarshaler }
+func (errorMarshaler) WriteJSON(_ Writer) error     { return errMarshaler }
+func (*errorPtrMarshaler) WriteJSON(_ Writer) error { return errMarshaler }
 
 // TestMarshalerError tests that a MarshalerError
 // is returned when a MarshalText or a MarshalJSON
 // method returns an error.
 func TestMarshalerError(t *testing.T) {
-	testdata := []interface{}{
-		errJSONMarshaler{}, &errJSONMarshalerPtr{},
-		errTextMarshaler{}, &errTextMarshalerPtr{},
-	}
-	for _, tt := range testdata {
+	for _, tt := range []interface{}{
+		errorJSONMarshaler{},
+		&errorPtrJSONMarshaler{},
+		errorTextMarshaler{},
+		&errorPtrTextMarshaler{},
+		errorMarshaler{},
+		&errorPtrMarshaler{},
+	} {
 		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
 			t.Fatal(err)
@@ -1594,6 +1629,110 @@ func TestMarshalerError(t *testing.T) {
 		} else {
 			t.Error("got nil, want non-nil error")
 		}
+	}
+}
+
+type (
+	stringMarshaler    string
+	stringPtrMarshaler string
+	structMarshaler    struct{}
+	structPtrMarshaler struct{}
+)
+
+func (wm stringMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(wm)))
+	return err
+}
+func (wm stringMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(wm))), nil
+}
+func (wm *stringPtrMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(*wm)))
+	return err
+}
+func (wm *stringPtrMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(*wm))), nil
+}
+func (structMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(`"Loreum"`)
+	return err
+}
+func (structMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"Loreum"`), nil
+}
+func (*structPtrMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(`"Loreum"`)
+	return err
+}
+func (*structPtrMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"Loreum"`), nil
+}
+
+func TestMarshaler(t *testing.T) {
+	// S = Non-pointer receiver of composite type.
+	// I = Non-pointer receiver of primitive type.
+	// F = Pointer receiver of composite kind.
+	// P = Pointer receiver of primitive type.
+	type x struct {
+		S1 structMarshaler     `json:"s1"`
+		S2 structMarshaler     `json:"s2,omitempty"`
+		S3 *structMarshaler    `json:"s3"`
+		S4 *structMarshaler    `json:"s4"`           // nil
+		S5 *structMarshaler    `json:"s5,omitempty"` // nil
+		I1 stringMarshaler     `json:"i1,omitempty"`
+		I2 stringMarshaler     `json:"i2,omitempty"`
+		I3 stringMarshaler     `json:"i3"`
+		I4 *stringMarshaler    `json:"i4"`
+		I5 *stringMarshaler    `json:"i5"`           // nil
+		I6 *stringMarshaler    `json:"i6,omitempty"` // nil
+		F1 structPtrMarshaler  `json:"f1"`
+		F2 structPtrMarshaler  `json:"f2,omitempty"`
+		F3 *structPtrMarshaler `json:"f3"`
+		F4 *structPtrMarshaler `json:"f4"`           // nil
+		F5 *structPtrMarshaler `json:"f5,omitempty"` // nil
+		P1 stringPtrMarshaler  `json:"p1,omitempty"`
+		P2 stringPtrMarshaler  `json:"p2,omitempty"`
+		P3 stringPtrMarshaler  `json:"p3"`
+		P4 *stringPtrMarshaler `json:"p4"`
+		P5 *stringPtrMarshaler `json:"p5"`           // nil
+		P6 *stringPtrMarshaler `json:"p6,omitempty"` // nil
+	}
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		swm  = stringMarshaler("Loreun")
+		spwm = stringPtrMarshaler("Ipsum")
+	)
+	xx := x{
+		S1: structMarshaler{},
+		S3: &structMarshaler{},
+		I1: "Loreun",
+		I4: &swm,
+		F1: structPtrMarshaler{},
+		F3: &structPtrMarshaler{},
+		P1: "Ipsum",
+		P4: &spwm,
+	}
+	testdata := []struct {
+		name string
+		val  interface{}
+	}{
+		{"non-pointer", xx},
+		{"pointer", &xx},
+	}
+	for _, tt := range testdata {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := enc.Encode(tt.val, &buf); err != nil {
+				t.Error(err)
+			}
+			if !equalStdLib(t, tt.val, buf.Bytes()) {
+				t.Error("expected outputs to be equal")
+			}
+		})
 	}
 }
 
@@ -1631,7 +1770,7 @@ func TestTime(t *testing.T) {
 		}
 	}
 	buf.Reset()
-	if err := enc.Encode(&tm, &buf, UnixTimestamp); err != nil {
+	if err := enc.Encode(&tm, &buf, UnixTimestamp()); err != nil {
 		t.Error(err)
 	}
 	if s, want := buf.String(), "1247396605"; s != want {
@@ -1709,7 +1848,7 @@ func TestByteArray(t *testing.T) {
 	for _, tt := range testdata {
 		var opts []Option
 		if tt.Raw {
-			opts = append(opts, ByteArrayAsString)
+			opts = append(opts, ByteArrayAsString())
 		}
 		enc, err := NewEncoder(reflect.TypeOf(tt.Val))
 		if err != nil {
@@ -1791,7 +1930,7 @@ func TestByteSliceAsRawString(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if err := enc.Encode(b, &buf, RawByteSlices); err != nil {
+	if err := enc.Encode(b, &buf, RawByteSlice()); err != nil {
 		t.Error(err)
 	}
 	want := strconv.Quote(string(b))
@@ -1847,7 +1986,7 @@ func TestStringEscaping(t *testing.T) {
 		}
 		var opts []Option
 		if tt.NSE {
-			opts = append(opts, NoStringEscaping)
+			opts = append(opts, NoStringEscaping())
 		}
 		var buf bytes.Buffer
 		if err := enc.Encode(&s, &buf, opts...); err != nil {
@@ -1883,10 +2022,10 @@ func TestStringHTMLEscaping(t *testing.T) {
 		}
 		var opts []Option
 		if tt.NSE {
-			opts = append(opts, NoStringEscaping)
+			opts = append(opts, NoStringEscaping())
 		}
 		if tt.NHE {
-			opts = append(opts, NoHTMLEscaping)
+			opts = append(opts, NoHTMLEscaping())
 		}
 		var buf bytes.Buffer
 		if err := enc.Encode(&s, &buf, opts...); err != nil {
@@ -1918,7 +2057,7 @@ func TestStringUTF8Coercion(t *testing.T) {
 		}
 		var opts []Option
 		if tt.NUC {
-			opts = append(opts, NoUTF8Coercion)
+			opts = append(opts, NoUTF8Coercion())
 		}
 		var buf bytes.Buffer
 		if err := enc.Encode(tt.Bts, &buf, opts...); err != nil {
@@ -2241,7 +2380,7 @@ func BenchmarkSimplePayload(b *testing.B) {
 			// None of the string fields of the SimplePayload
 			// type contains HTML characters nor contains invalid
 			// UTF-8 byte sequences, so this is fine.
-			if err := enc.Encode(sp, &buf, NoUTF8Coercion, NoHTMLEscaping); err != nil {
+			if err := enc.Encode(sp, &buf, NoUTF8Coercion(), NoHTMLEscaping()); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(buf.Len()))
@@ -2423,7 +2562,7 @@ func BenchmarkMap(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.Run("sort", benchMap(enc, m))
-		b.Run("nosort", benchMap(enc, m, UnsortedMap))
+		b.Run("nosort", benchMap(enc, m, UnsortedMap()))
 	})
 }
 
@@ -2450,10 +2589,10 @@ func BenchmarkStringEscaping(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.Run("Full escaping", benchEscaping(enc, s))
-	b.Run("No UTF-8 coercion", benchEscaping(enc, s, NoUTF8Coercion))
-	b.Run("No HTML escaping", benchEscaping(enc, s, NoHTMLEscaping))
-	b.Run("No UTF-8 coercion & No HTML escaping", benchEscaping(enc, s, NoUTF8Coercion, NoHTMLEscaping))
-	b.Run("No escaping", benchEscaping(enc, s, NoStringEscaping))
+	b.Run("No UTF-8 coercion", benchEscaping(enc, s, NoUTF8Coercion()))
+	b.Run("No HTML escaping", benchEscaping(enc, s, NoHTMLEscaping()))
+	b.Run("No UTF-8 coercion & No HTML escaping", benchEscaping(enc, s, NoUTF8Coercion(), NoHTMLEscaping()))
+	b.Run("No escaping", benchEscaping(enc, s, NoStringEscaping()))
 }
 
 //nolint:unparam
