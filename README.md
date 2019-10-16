@@ -127,7 +127,7 @@ Output
 ```
 </details>
 
-## Options
+### Options
 
 Opt-in options are available to customize the behavior of the package. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
