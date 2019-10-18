@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
 ## [v0.4.0] - 2019-10-18
-- Add the `Marshaler` interface. Types that implements it can write a JSON representation of themselves to a Writer directly, to avoid having to allocate a buffer as they would usually do when using the json.Marshaler interface.
+- Add the `Marshaler` interface. Types that implements it can write a JSON representation of themselves to a `Writer` directly, to avoid having to allocate a buffer as they would usually do when using the `json.Marshaler` interface.
 
 ## [v0.3.1] - 2019-10-09
 - Fix HTML characters escaping in struct field names.
