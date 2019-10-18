@@ -40,7 +40,7 @@ func TestInvalidWriter(t *testing.T) {
 			t.Errorf("got %T, want ErrInvalidWriter", err)
 		}
 	} else {
-		t.Error("expected non-nil errpr")
+		t.Error("expected non-nil error")
 	}
 }
 
