@@ -10,13 +10,11 @@ var encoderCache sync.Map // map[reflect.Type]*cachedEncoder
 
 // Marshaler is a variant of the json.Marshaler
 // interface, implemented by types that can write
-// a valid JSON representation of themselves.
-// Instead of returning a new buffer, the method
-// should write the JSON data to the given writer
-// directly. If a type implements both interfaces,
+// a valid JSON representation of themselves to
+// a Writer. If a type implements both interfaces,
 // Jettison will use its own interface in priority.
 type Marshaler interface {
-	WriteJSON(w Writer) error
+	WriteJSON(Writer) error
 }
 
 // Register records a new compiled encoder for the given
