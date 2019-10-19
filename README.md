@@ -1,5 +1,6 @@
 <h1 align="center">Jettison</h1>
-<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a high performance, reflection-less, and configurable <strong>JSON</strong> encoder inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
+<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a high performance, reflection-less, and configurable <strong>JSON</strong> encoder for the Go programming language, inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
+<br>
 <p align="center">
     <a href="https://github.com/wI2L/jettison/releases"><img src="https://img.shields.io/github/v/tag/wI2L/jettison?color=blueviolet&label=version&sort=semver"></a>
     <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
@@ -20,7 +21,7 @@ Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). R
 ```sh
 $ go get github.com/wI2L/jettison
 ```
-:warning: Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
+:exclamation:Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
 
 ## Key features
 
@@ -129,33 +130,42 @@ Output
 
 ### Options
 
-Opt-in options are available to customize the behavior of the package. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
+Opt-in options are available to customize the behavior of an encoder. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-|                   Name   | Description                                                                                                                                                                                  |
-| -----------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|           **TimeLayout** | Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.                                                                                                     |
-|       **DurationFormat** | Defines the format used to encode `time.Duration` values. `DurationString` is the default. See `DurationFmt` for the complete list of formats available.                                     |
-|        **UnixTimestamp** | Encode `time.Time` values as JSON numbers representing Unix timestamps.                                                                                                                      |
-|          **UnsortedMap** | Disables map keys sort. See [Map](#map) benchmark for performance gain.                                                                                                                      |
-|    **ByteArrayAsString** | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used. |
-|         **RawByteSlice** | Disables *base64* default encoding used for byte slices.                                                                                                                                     |
-|          **NilMapEmpty** | Encodes nil maps as empty JSON objects rather than `null`.                                                                                                                                   |
-|        **NilSliceEmpty** | Encodes nil slices as empty JSON arrays rather than `null`.                                                                                                                                  |
-|     **NoStringEscaping** | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                                        |
-|       **NoHTMLEscaping** | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.                                                   |
-|       **NoUTF8Coercion** | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                                 |
+- **TimeLayout**   
+  Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.
+- **DurationFormat**   
+  Defines the format used to encode `time.Duration` values. `DurationString` is the default. See the documentation of the `DurationFmt` type for the complete list of formats available.
+- **UnixTimestamp**   
+  Encode `time.Time` values as JSON numbers representing Unix timestamps.
+- **UnsortedMap**   
+  Disables map keys sort. See [Map](#map) benchmark for performance gain.
+- **ByteArrayAsString**   
+  Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
+- **RawByteSlice**   
+  Disables *base64* default encoding used for byte slices.
+- **NilMapEmpty**   
+  Encodes nil Go maps as empty JSON objects rather than `null`.
+- **NilSliceEmpty**   
+  Encodes nil Go slices as empty JSON arrays rather than `null`.
+- **NoStringEscaping**   
+  Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
+- **NoHTMLEscaping**   
+  Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.
+- **NoUTF8Coercion**   
+  Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
 
 ## Differences with `encoding/json`
-
-- The `time.Time` and `time.Duration` types are handled natively by this package.
-  - For `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream.
-  - For `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
 
 - The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
 
 - Nil map keys values implementing the `encoding.TextMarshaler` interface are encoded as empty strings, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1]</sup>
 
 - Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235) for more details.<sup>[1]</sup>
+
+- The `time.Time` and `time.Duration` types are handled natively by this package.
+  > For `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream.   
+  > For `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
 
 <sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
 
@@ -284,5 +294,8 @@ Map/jettison/nosort-4      2.00 ± 0%
 
 ---
 
-This package uses some portions of code of the Go **encoding/json** package.
-The associated license can be found in [LICENSE.golang](LICENSE.golang).
+## License
+Jettison is licensed under the **MIT** license. See the [LICENSE](LICENSE) file.
+
+This package also uses some portions of code from the Go **encoding/json** package. The associated license can be found in [LICENSE.golang](LICENSE.golang).
+
