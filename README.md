@@ -1,13 +1,12 @@
 <h1 align="center">Jettison</h1>
 <p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a high performance, reflection-less, and configurable <strong>JSON</strong> encoder for the Go programming language, inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at 100% compatibility with the standard library.</p>
-<br>
 <p align="center">
-    <a href="https://github.com/wI2L/jettison/releases"><img src="https://img.shields.io/github/v/tag/wI2L/jettison?color=blueviolet&label=version&sort=semver"></a>
     <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
     <a href="https://goreportcard.com/report/wI2L/jettison"><img src="https://goreportcard.com/badge/github.com/wI2L/fizz"></a>
     <a href="https://travis-ci.org/wI2L/jettison"><img src="https://travis-ci.org/wI2L/jettison.svg?branch=master"></a>
     <a href="https://github.com/wI2L/jettison/actions"><img src="https://github.com/wI2L/jettison/workflows/CI/badge.svg"></a>
     <a href="https://codecov.io/gh/wI2L/jettison"><img src="https://codecov.io/gh/wI2L/jettison/branch/master/graph/badge.svg"/></a>
+    <a href="https://github.com/wI2L/jettison/releases"><img src="https://img.shields.io/github/v/tag/wI2L/jettison?color=blueviolet&label=version&sort=semver"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 <br>
 </p>
@@ -45,14 +44,25 @@ The package aims to have a behavior similar to that of the standard library for 
 
 The main concept of Jettison consists of using pre-build encoders to reduce the cost of using the `reflect` package at runtime. When a new instance of an encoder is created for a specific type, a set of _instructions_ is recursively generated, which defines how to iteratively encode a value. An _instruction_ is a function or a closure, that have all the information required to read the data from memory using _unsafe_ operations during the instruction set execution.
 
+### Differences with `encoding/json`
+
+- The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
+
+- Nil map keys values implementing the `encoding.TextMarshaler` interface are encoded as empty strings, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1]</sup>
+
+- Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235) for more details.<sup>[1]</sup>
+
+- The `time.Time` and `time.Duration` types are handled natively by this package. About `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream. Regarding `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
+
+<sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
+
 ## Usage
 
 ### Basic
 
 Starting from version 0.3.0, the `Marshal` and `MarshalTo` functions are available. The first will allocate a new bytes slice to store the encoding of the given value, while the latter will write to the given stream. These functions use a package's cache to fetch the appropriate encoder for the given value type. If an encoder does not exist, a new one is created on the fly and stored in the cache for future reuse.
 
-
-<details>
+<details open>
 <summary>Example</summary>
 
 ```go
@@ -88,7 +98,7 @@ If more control over the encoding behavior is required, or to avoid the latency 
 
 The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the above example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
 
-<details>
+<details open>
 <summary>Example</summary>
 
 ```go
@@ -155,20 +165,6 @@ Opt-in options are available to customize the behavior of an encoder. The third 
 - **NoUTF8Coercion**   
   Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
 
-## Differences with `encoding/json`
-
-- The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
-
-- Nil map keys values implementing the `encoding.TextMarshaler` interface are encoded as empty strings, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1]</sup>
-
-- Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235) for more details.<sup>[1]</sup>
-
-- The `time.Time` and `time.Duration` types are handled natively by this package.
-  > For `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream.   
-  > For `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
-
-<sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
-
 ## Benchmarks
 
 > Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
@@ -176,7 +172,6 @@ Opt-in options are available to customize the behavior of an encoder. The third 
 > jettison v0.3.0
 
 ### Simple
-
 
 Basic object with fields of type `string`, `int` and `bool`. [source](https://github.com/wI2L/jettison/blob/master/encoder_test.go#L1206)
 
