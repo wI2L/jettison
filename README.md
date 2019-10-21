@@ -15,9 +15,7 @@
 
 ## Installation
 
-Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the _SemVer_ format, prefixed with a `v`, starting from release *0.2.0*.
-
-You can get the latest release using the following command.
+Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged according to the _SemVer_ format, prefixed with a `v`, starting from *0.2.0*. You can get the latest release using the following command.
 
 ```sh
 $ go get github.com/wI2L/jettison
@@ -27,14 +25,14 @@ $ go get github.com/wI2L/jettison
 ## Key features
 
 - Fast, see [benchmarks](#benchmarks)
-- Zero allocations on average
+- Efficient, zero allocations on average
 - Behavior identical to the standard library by default
 - No code generation required
-- Clear and simple API
-- Options available to configure encoding
+- Clear and concise API
+- Configurable with opt-in functional options
 - Native support for `time.Time` and `time.Duration` types
 - Custom `Marshaler` interface to work with a `Writer`
-- Extensive testsuite
+- Extensive testsuite that compares its output against `encoding/json`
 
 ## Overview
 
@@ -50,13 +48,13 @@ The main concept of Jettison consists of using pre-build encoders to reduce the 
 
 All notable differences with the standard library behavior are listed below. Please bote that these might evolve with future versions of the package.
 
-##### Features
-
-- The `time.Time` and `time.Duration` types are handled natively. About `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream. Regarding `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
-
-##### Regressions
+##### Limitations
 
 - The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
+
+##### Improvements
+
+- The `time.Time` and `time.Duration` types are handled natively. For time values, the encoder doesn't invoke `MarshalJSON` or `MarshalText`, but use the `time.AppendFormat` [function](https://golang.org/pkg/time/#Time.AppendFormat) instead, and write the result to the stream. Similarly, for durations, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration [format](https://godoc.org/github.com/wI2L/jettison#DurationFmt) configured.
 
 ##### Bugs
 
@@ -277,7 +275,7 @@ Map/jettison/nosort-4      2.00 ± 0%
 </pre></details>
 
 ## License
+
 Jettison is licensed under the **MIT** license. See the [LICENSE](LICENSE) file.
 
 This package also uses some portions of code from the Go **encoding/json** package. The associated license can be found in [LICENSE.golang](LICENSE.golang).
-
