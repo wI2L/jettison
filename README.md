@@ -15,12 +15,14 @@
 
 ## Installation
 
-Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the _SemVer_ format, prefixed with a `v`, starting from `0.2.0`. You can get the latest release using the following command.
+Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged with the _SemVer_ format, prefixed with a `v`, starting from release *0.2.0*.
+
+You can get the latest release using the following command.
 
 ```sh
 $ go get github.com/wI2L/jettison
 ```
-:exclamation:Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
+:warning: Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
 
 ## Key features
 
@@ -46,13 +48,21 @@ The main concept of Jettison consists of using pre-build encoders to reduce the 
 
 ### Differences with `encoding/json`
 
+All notable differences with the standard library behavior are listed below. Please bote that these might evolve with future versions of the package.
+
+##### Features
+
+- The `time.Time` and `time.Duration` types are handled natively. About `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream. Regarding `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
+
+##### Regressions
+
 - The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
+
+##### Bugs
 
 - Nil map keys values implementing the `encoding.TextMarshaler` interface are encoded as empty strings, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1]</sup>
 
 - Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235) for more details.<sup>[1]</sup>
-
-- The `time.Time` and `time.Duration` types are handled natively by this package. About `time.Time`, the encoder doesn't invoke the `MarshalJSON`/`MarshalText` methods, but use `time.AppendFormat` instead, and write the output to the stream. Regarding `time.Duration`, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration format configured.
 
 <sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
 
@@ -60,19 +70,9 @@ The main concept of Jettison consists of using pre-build encoders to reduce the 
 
 ### Basic
 
-Starting from version 0.3.0, the `Marshal` and `MarshalTo` functions are available. The first will allocate a new bytes slice to store the encoding of the given value, while the latter will write to the given stream. These functions use a package's cache to fetch the appropriate encoder for the given value type. If an encoder does not exist, a new one is created on the fly and stored in the cache for future reuse.
-
-<details open>
-<summary>Example</summary>
+Starting from version *0.3.0*, the `Marshal` and `MarshalTo` functions are available. The first will allocate a new bytes slice to store the encoding of the given value, similar to `json.Marshal`, while the latter will write to the `Writer`. These functions use a package's cache to fetch the appropriate encoder for the given value type. If an encoder does not exist, a new one is created on the fly and stored in the cache for future reuse.
 
 ```go
-import (
-   "log"
-   "os"
-
-   "github.com/wI2L/jettison"
-)
-
 type X struct {
    A string `json:"a"`
    B int64  `json:"b"`
@@ -90,26 +90,14 @@ Output
 ```json
 {"a":"Loreum","b":42}
 ```
-</details>
 
 ### Advanced
 
 If more control over the encoding behavior is required, or to avoid the latency of creating a new encoder when encoding a type for the first time, an encoder can be created ahead of time, during initialization. Note that if you don't invoke the `Compile` method, the instruction set will be generated once, on the first call to the `Encode` method.
 
-The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the above example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
-
-<details open>
-<summary>Example</summary>
+The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the following example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
 
 ```go
-import (
-   "bytes"
-   "os"
-   "reflect"
-
-   "github.com/wI2L/jettison"
-)
-
 type X struct {
     A string `json:"a,omitempty"`
     B int    `json:"b"`
@@ -136,44 +124,43 @@ Output
 ```json
 {"a":"Loreum","b":42}
 ```
-</details>
 
 ### Options
 
-Opt-in options are available to customize the behavior of an encoder. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
+Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
 - **TimeLayout**   
-  Defines the layout used to encode `time.Time` values. `time.RFC3339Nano` is the default.
+Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
 - **DurationFormat**   
-  Defines the format used to encode `time.Duration` values. `DurationString` is the default. See the documentation of the `DurationFmt` type for the complete list of formats available.
+Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
 - **UnixTimestamp**   
-  Encode `time.Time` values as JSON numbers representing Unix timestamps.
+Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since Januaray 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
 - **UnsortedMap**   
-  Disables map keys sort. See [Map](#map) benchmark for performance gain.
+Disables map keys sort. See [Map](#map) benchmark for performance difference.
 - **ByteArrayAsString**   
-  Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
+Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
 - **RawByteSlice**   
-  Disables *base64* default encoding used for byte slices.
+Disables the *base64* default encoding used for byte slices.
 - **NilMapEmpty**   
-  Encodes nil Go maps as empty JSON objects rather than `null`.
+Encodes nil Go maps as empty JSON objects rather than `null`.
 - **NilSliceEmpty**   
-  Encodes nil Go slices as empty JSON arrays rather than `null`.
+Encodes nil Go slices as empty JSON arrays rather than `null`.
 - **NoStringEscaping**   
-  Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
+Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
 - **NoHTMLEscaping**   
-  Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. Similar to `json.Encoder.SetEscapeHTML(false)`.
+Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
 - **NoUTF8Coercion**   
-  Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
+Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
 
 ## Benchmarks
 
 > Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
 > go version go1.13 linux/amd64   
-> jettison v0.3.0
+> jettison *v0.3.0*
 
 ### Simple
 
-Basic object with fields of type `string`, `int` and `bool`. [source](https://github.com/wI2L/jettison/blob/master/encoder_test.go#L1206)
+Basic object with fields of type `string`, `int` and `bool`. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L43)
 
 <img src="images/sp-graph.png" alt="Simple Payload Benchmark Graph">
 
@@ -205,7 +192,7 @@ SimplePayload/jettison-4     0.00
 
 ### Complex
 
-Payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types. [source](https://github.com/wI2L/jettison/blob/master/encoder_test.go#L1299)
+Payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L112)
 
 <img src="images/cp-graph.png" alt="Complex Payload Benchmark Graph">
 
@@ -259,6 +246,8 @@ Interface/jettison-4      0.00
 
 ### Map
 
+Compares Go map marshaling performances, with and without keys sort. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L251)
+
 <img src="images/map-graph.png" alt="Map Benchmark Graph">
 
 <details><summary>Stats</summary><br><pre>
@@ -286,8 +275,6 @@ Map/jsoniter-4             11.0 ± 0%
 Map/jettison/sort-4        6.00 ± 0%
 Map/jettison/nosort-4      2.00 ± 0%
 </pre></details>
-
----
 
 ## License
 Jettison is licensed under the **MIT** license. See the [LICENSE](LICENSE) file.
