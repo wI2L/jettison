@@ -19,10 +19,7 @@ import (
 	"github.com/modern-go/reflect2"
 )
 
-const (
-	zero = uintptr(0)
-	hex  = "0123456789abcdef"
-)
+const hex = "0123456789abcdef"
 
 // defaultTimeLayout is the layout used by default
 // to format a time.Time, unless otherwise specified.
@@ -639,14 +636,14 @@ func floatInstr(p unsafe.Pointer, w Writer, es *encodeState, bitSize int) error 
 }
 
 // writeByteArrayAsString writes a byte array to w as a JSON string.
-func writeByteArrayAsString(v unsafe.Pointer, w Writer, es *encodeState, length int) error {
+func writeByteArrayAsString(p unsafe.Pointer, w Writer, es *encodeState, length int) error {
 	if err := w.WriteByte('"'); err != nil {
 		return err
 	}
 	// For byte type, size is guaranteed to be 1.
 	// https://golang.org/ref/spec#Size_and_alignment_guarantees
 	b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(v),
+		Data: uintptr(p),
 		Len:  length,
 		Cap:  length,
 	}))
@@ -661,8 +658,8 @@ func writeByteArrayAsString(v unsafe.Pointer, w Writer, es *encodeState, length 
 // the bytes are written directly to the stream,
 // otherwise, it writes a base64 representation.
 func byteSliceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
-	shdr := *(*reflect.SliceHeader)(p)
-	if shdr.Data == zero {
+	shdr := (*reflect.SliceHeader)(p)
+	if shdr.Data == uintptr(0) {
 		_, err := w.WriteString("null")
 		return err
 	}
@@ -919,19 +916,15 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 					return err
 				}
 			}
-			var p unsafe.Pointer
+			p := unsafe.Pointer(uintptr(v) + uintptr(i)*esz)
 			if isPtr {
-				p = unsafe.Pointer(*(*uintptr)(
-					unsafe.Pointer(uintptr(v) + (uintptr(i) * esz))),
-				)
+				p = *(*unsafe.Pointer)(p)
 				if p == nil {
 					if _, err := w.WriteString("null"); err != nil {
 						return err
 					}
 					continue
 				}
-			} else {
-				p = unsafe.Pointer(uintptr(v) + (uintptr(i) * esz))
 			}
 			// Encode the nth element of the array.
 			if err := eins(p, w, es); err != nil {
@@ -972,8 +965,8 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 		esz = t.Elem().Size()
 	}
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
-		shdr := *(*reflect.SliceHeader)(v)
-		if shdr.Data == zero {
+		shdr := (*reflect.SliceHeader)(v)
+		if shdr.Data == uintptr(0) {
 			if es.opts.nilSliceEmpty {
 				_, err := w.WriteString("[]")
 				return err
@@ -988,23 +981,21 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 		if err := w.WriteByte('['); err != nil {
 			return err
 		}
-		for i := zero; i < uintptr(shdr.Len); i++ {
-			if i != zero {
+		for i := 0; i < shdr.Len; i++ {
+			if i != 0 {
 				if err := w.WriteByte(','); err != nil {
 					return err
 				}
 			}
-			var p unsafe.Pointer
+			p := unsafe.Pointer(uintptr(unsafe.Pointer(shdr.Data)) + uintptr(i)*esz)
 			if isPtr {
-				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(shdr.Data + (i * esz))))
+				p = *(*unsafe.Pointer)(p)
 				if p == nil {
 					if _, err := w.WriteString("null"); err != nil {
 						return err
 					}
 					continue
 				}
-			} else {
-				p = unsafe.Pointer(shdr.Data + (i * esz))
 			}
 			// Encode the nth element of the slice.
 			if err := eins(p, w, es); err != nil {

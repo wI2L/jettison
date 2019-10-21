@@ -210,7 +210,8 @@ func wrapStructFieldInstr(instr Instruction, f field, isPtr bool, ft reflect.Typ
 	if isPtr {
 		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
 			if p != nil {
-				p = unsafe.Pointer(*(*uintptr)(unsafe.Pointer(uintptr(p) + offset)))
+				p = unsafe.Pointer(uintptr(p) + offset)
+				p = *(*unsafe.Pointer)(p)
 			}
 			if omit && p == nil {
 				return nil
