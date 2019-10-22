@@ -295,6 +295,53 @@ func TestMap(t *testing.T) {
 	}
 }
 
+type (
+	mapKeyString           string
+	mapKeyInteger          int64
+	mapKeyMarshaler        struct{}
+	mapKeyStringMarshaler  string
+	mapKeyIntegerMarshaler uint64
+)
+
+func (mapKeyMarshaler) MarshalText() ([]byte, error) {
+	return []byte("loreum"), nil
+}
+func (mapKeyStringMarshaler) MarshalText() ([]byte, error) {
+	return []byte("ipsum"), nil
+}
+func (mapKeyIntegerMarshaler) MarshalText() ([]byte, error) {
+	return []byte("dolor"), nil
+}
+
+// TestMapKeyPrecedence tests that the precedence order
+// of map key types is respected during marshaling. It is
+// defined by the json.Marshal documentation as:
+// - any string type
+// - encoding.TextMarshaler
+// - any integer type
+func TestMapKeyPrecedence(t *testing.T) {
+	testdata := []interface{}{
+		map[mapKeyString]string{"loreum": "ipsum"},
+		map[mapKeyInteger]string{1: "loreum"},
+		map[mapKeyMarshaler]string{{}: "ipsum"},
+		map[mapKeyStringMarshaler]string{mapKeyStringMarshaler("xxx"): "loreum"},
+		map[mapKeyIntegerMarshaler]string{mapKeyIntegerMarshaler(42): "ipsum"},
+	}
+	for _, tt := range testdata {
+		enc, err := NewEncoder(reflect.TypeOf(tt))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if err := enc.Encode(tt, &buf); err != nil {
+			t.Error(err)
+		}
+		if !equalStdLib(t, tt, buf.Bytes()) {
+			t.Error("expected outputs to be equal")
+		}
+	}
+}
+
 func TestSlice(t *testing.T) {
 	testdata := []struct {
 		Val []string

@@ -91,8 +91,8 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 // newTypeInstr returns the instruction to encode t.
 // It creates a new Encoder instance to encode some
 // composite types, such as struct and map.
-func newTypeInstr(t reflect.Type, skipSpecial bool) (Instruction, error) {
-	if skipSpecial {
+func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, error) {
+	if skipSpecialAndMarshalers {
 		goto def
 	}
 	// Special types must be checked first, because a Duration
@@ -1030,7 +1030,15 @@ func newMapInstr(t reflect.Type) (Instruction, error) {
 	if err != nil {
 		return nil, err
 	}
-	kinstr, err := cachedTypeInstr(kt)
+	// The standard library has a strict precedence order
+	// for map key types, defined in the documentation of
+	// the json.Marshal functions; that's why we bypass
+	// the TextMarshaler instructions if the key is a string.
+	bypassMarshaler := false
+	if isString(kt) {
+		bypassMarshaler = true
+	}
+	kinstr, err := newTypeInstr(kt, bypassMarshaler)
 	if err != nil {
 		return nil, err
 	}
