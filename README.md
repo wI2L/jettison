@@ -46,7 +46,7 @@ The main concept of Jettison consists of using pre-build encoders to reduce the 
 
 ### Differences with `encoding/json`
 
-All notable differences with the standard library behavior are listed below. Please bote that these might evolve with future versions of the package.
+All notable differences with the standard library behavior are listed below. Please note that these might evolve with future versions of the package.
 
 ##### Limitations
 
