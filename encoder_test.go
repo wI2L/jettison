@@ -1868,6 +1868,40 @@ func TestDuration(t *testing.T) {
 	}
 }
 
+func TestAppendDuration(t *testing.T) {
+	// Taken from https://golang.org/src/time/time_test.go.
+	var testdata = []struct {
+		str string
+		dur time.Duration
+	}{
+		{"0s", 0},
+		{"1ns", 1 * time.Nanosecond},
+		{"1.1µs", 1100 * time.Nanosecond},
+		{"2.2ms", 2200 * time.Microsecond},
+		{"3.3s", 3300 * time.Millisecond},
+		{"4m5s", 4*time.Minute + 5*time.Second},
+		{"4m5.001s", 4*time.Minute + 5001*time.Millisecond},
+		{"5h6m7.001s", 5*time.Hour + 6*time.Minute + 7001*time.Millisecond},
+		{"8m0.000000001s", 8*time.Minute + 1*time.Nanosecond},
+		{"2562047h47m16.854775807s", 1<<63 - 1},
+		{"-2562047h47m16.854775808s", -1 << 63},
+	}
+	for _, tt := range testdata {
+		buf := make([]byte, 32)
+		buf = appendDuration(buf, tt.dur)
+		if s := string(buf); s != tt.str {
+			t.Errorf("got %s, want %s", s, tt.str)
+		}
+		if tt.dur > 0 {
+			buf = make([]byte, 32)
+			buf = appendDuration(buf, -tt.dur)
+			if s := string(buf); s != "-"+tt.str {
+				t.Errorf("got %s, want %s", s, "-"+tt.str)
+			}
+		}
+	}
+}
+
 // TestByteArray tests that that a byte array can
 // be encoded either as a JSON array or as a JSON
 // string with the ByteArrayAsString option.

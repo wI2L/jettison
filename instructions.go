@@ -803,12 +803,11 @@ func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 	d := *(*time.Duration)(p)
 
 	if es.opts.durationFmt == DurationString {
-		s := d.String()
-		b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-			Data: (*reflect.StringHeader)(unsafe.Pointer(&s)).Data,
-			Len:  len(s),
-			Cap:  len(s),
-		}))
+		// The largest time is 2540400h10m10.000000000s,
+		// which fit in a 32-byte buffer.
+		b := es.scratch[:32]
+		b = appendDuration(b, d)
+
 		if err := w.WriteByte('"'); err != nil {
 			return err
 		}

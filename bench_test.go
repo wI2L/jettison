@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/francoispqt/gojay"
 	jsoniter "github.com/json-iterator/go"
@@ -301,6 +302,40 @@ func benchMap(enc *Encoder, m map[string]int, opts ...Option) func(b *testing.B)
 	}
 }
 
+func BenchmarkDuration(b *testing.B) {
+	formats := []DurationFmt{
+		DurationString,
+		DurationMinutes,
+		DurationSeconds,
+		DurationMicroseconds,
+		DurationMilliseconds,
+		DurationNanoseconds,
+	}
+	d := 1337 * time.Second
+	enc, err := NewEncoder(reflect.TypeOf(d))
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, fmt := range formats {
+		var (
+			buf  bytes.Buffer
+			name = fmt.String()
+			opts = []Option{DurationFormat(fmt)}
+		)
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := enc.Encode(&d, &buf, opts...); err != nil {
+					b.Fatal(err)
+				}
+				b.SetBytes(int64(buf.Len()))
+				buf.Reset()
+			}
+		})
+	}
+}
+
 func BenchmarkStringEscaping(b *testing.B) {
 	s := "<ŁØŘ€M ƗƤŞỮM ĐØŁØŘ ŞƗŦ ΔM€Ŧ>"
 
@@ -336,6 +371,19 @@ func benchEscaping(enc *Encoder, s string, opts ...Option) func(b *testing.B) {
 	}
 }
 
+type (
+	jsonBM struct{}
+	textBM struct{}
+	jetiBM struct{}
+)
+
+func (jsonBM) MarshalJSON() ([]byte, error) { return []byte(`"Lorem ipsum dolor sit amet"`), nil }
+func (textBM) MarshalText() ([]byte, error) { return []byte("Lorem ipsum dolor sit amet"), nil }
+func (jetiBM) WriteJSON(w Writer) error {
+	_, err := w.WriteString("Lorem ipsum dolor sit amet")
+	return err
+}
+
 func BenchmarkMarshaler(b *testing.B) {
 	for _, bb := range []struct {
 		Name string
@@ -363,21 +411,4 @@ func BenchmarkMarshaler(b *testing.B) {
 			}
 		})
 	}
-}
-
-type (
-	jsonBM struct{}
-	textBM struct{}
-	jetiBM struct{}
-)
-
-func (jsonBM) MarshalJSON() ([]byte, error) {
-	return []byte(`"Lorem ipsum dolor sit amet"`), nil
-}
-func (textBM) MarshalText() ([]byte, error) {
-	return []byte("Lorem ipsum dolor sit amet"), nil
-}
-func (jetiBM) WriteJSON(w Writer) error {
-	_, err := w.WriteString("Lorem ipsum dolor sit amet")
-	return err
 }
