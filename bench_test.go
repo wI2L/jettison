@@ -60,7 +60,7 @@ func BenchmarkSimplePayload(b *testing.B) {
 		Tz:   8,
 		V:    true,
 	}
-	b.Run("standard", func(b *testing.B) {
+	b.Run("encoding/json", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			bts, err := json.Marshal(sp)
@@ -170,7 +170,7 @@ func BenchmarkComplexPayload(b *testing.B) {
 		Q:  [][]int{{1, 2}, {3, 4}},
 		R:  [2][2]string{{"a", "b"}, {"c", "d"}},
 	}
-	b.Run("standard", func(b *testing.B) {
+	b.Run("encoding/json", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -213,7 +213,7 @@ func BenchmarkInterface(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Run("standard", func(b *testing.B) {
+	b.Run("encoding/json", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -255,7 +255,7 @@ func BenchmarkMap(b *testing.B) {
 		"b": 2,
 		"c": 3,
 	}
-	b.Run("standard", func(b *testing.B) {
+	b.Run("encoding/json", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -303,6 +303,9 @@ func benchMap(enc *Encoder, m map[string]int, opts ...Option) func(b *testing.B)
 }
 
 func BenchmarkDuration(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	formats := []DurationFmt{
 		DurationString,
 		DurationMinutes,
@@ -337,6 +340,9 @@ func BenchmarkDuration(b *testing.B) {
 }
 
 func BenchmarkStringEscaping(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	s := "<ŁØŘ€M ƗƤŞỮM ĐØŁØŘ ŞƗŦ ΔM€Ŧ>"
 
 	enc, err := NewEncoder(reflect.TypeOf(s))
@@ -385,13 +391,16 @@ func (jetiBM) WriteJSON(w Writer) error {
 }
 
 func BenchmarkMarshaler(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	for _, bb := range []struct {
 		Name string
 		Impl interface{}
 	}{
-		{"JSON", jsonBM{}},
-		{"Text", textBM{}},
-		{"Jettison", jetiBM{}},
+		{"json", jsonBM{}},
+		{"text", textBM{}},
+		{"jettison", jetiBM{}},
 	} {
 		bb := bb
 		b.Run(bb.Name, func(b *testing.B) {

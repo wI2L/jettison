@@ -41,11 +41,12 @@ _cgo_export.*
 *.out
 _testmain.go
 
-# Scripts
-coverage.txt
-.benchruns
-benchstats
-
 # Dependency directories
 vendor/
 Godeps/
+
+# CI/CD
+benchstats
+
+# NodeJS
+node_modules

@@ -20,7 +20,7 @@ Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). R
 ```sh
 $ go get github.com/wI2L/jettison
 ```
-:warning: Requires Go1.12+, due to the usage of the `io.StringWriter` interface.
+##### :exclamation: Requires Go1.12+, due to the usage of the [`io.StringWriter`](https://golang.org/pkg/io/#StringWriter) interface.
 
 ## Key features
 
@@ -36,7 +36,7 @@ $ go get github.com/wI2L/jettison
 
 ## Overview
 
-The goal of Jettision is to take up the idea introduced by the **bet365/jingo** package and build a fully-featured JSON encoder around it, that comply with the behavior of the [encoding/json](https://golang.org/pkg/encoding/json/) package. Unlike the latter, Jettison does not use reflection during marshaling, but only once to create the instruction set for a given type ahead of time. The drawback to this approach requires to instantiate an encoder once for each type that needs to be marshaled.
+The goal of Jettision is to take up the idea introduced by the **bet365/jingo** package and build a fully-featured JSON encoder around it, that comply with the behavior of the [encoding/json](https://golang.org/pkg/encoding/json/) package. Unlike the latter, Jettison does not use reflection during marshaling, but only once to create the instruction set for a given type ahead of time. The drawback to this approach requires to instantiate an encoder once for each type that needs to be marshaled, but that is overcomed with a package cache.
 
 The package aims to have a behavior similar to that of the standard library for all types encoding and struct tags, meaning that the documentation of the `json.Marshal` [function](https://golang.org/pkg/encoding/json/#Marshal) is applicable for Jettison, with a few exceptions described in this [section](#differences-with-encodingjson). As such, most of the tests compare their output against it to guarantee that.
 
@@ -84,7 +84,6 @@ if err != nil {
 }
 os.Stdout.Write(b)
 ```
-Output
 ```json
 {"a":"Loreum","b":42}
 ```
@@ -118,161 +117,144 @@ if err := enc.Encode(&xx, &buf); err != nil {
 }
 os.Stdout.Write(b)
 ```
-Output
 ```json
 {"a":"Loreum","b":42}
 ```
 
 ### Options
 
-Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
+Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder during marshaling. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-- **TimeLayout**   
+- **TimeLayout**
 Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
-- **DurationFormat**   
+- **DurationFormat**
 Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
-- **UnixTimestamp**   
+- **UnixTimestamp**
 Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since Januaray 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
-- **UnsortedMap**   
+- **UnsortedMap**
 Disables map keys sort. See [Map](#map) benchmark for performance difference.
-- **ByteArrayAsString**   
+- **ByteArrayAsString**
 Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
-- **RawByteSlice**   
+- **RawByteSlice**
 Disables the *base64* default encoding used for byte slices.
-- **NilMapEmpty**   
+- **NilMapEmpty**
 Encodes nil Go maps as empty JSON objects rather than `null`.
-- **NilSliceEmpty**   
+- **NilSliceEmpty**
 Encodes nil Go slices as empty JSON arrays rather than `null`.
-- **NoStringEscaping**   
+- **NoStringEscaping**
 Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
-- **NoHTMLEscaping**   
+- **NoHTMLEscaping**
 Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
-- **NoUTF8Coercion**   
+- **NoUTF8Coercion**
 Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
 
 ## Benchmarks
 
-> Ubuntu 16.04.6 LTS, Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz   
-> go version go1.13 linux/amd64   
-> jettison *v0.3.0*
+If you'd like to run the benchmarks yourself, use the following command.
 
-### Simple
+```shell
+go get github.com/cespare/prettybench
+go test -bench=. | prettybench
+```
 
-Basic object with fields of type `string`, `int` and `bool`. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L43)
+### Results
 
-<img src="images/sp-graph.png" alt="Simple Payload Benchmark Graph">
-
-<details><summary>Stats</summary><br><pre>
-name                      time/op
-SimplePayload/standard-4    658ns ± 2%
-SimplePayload/jsoniter-4    711ns ± 1%
-SimplePayload/gojay-4       474ns ± 1%
-SimplePayload/jettison-4    441ns ± 0%
--
-name                      speed
-SimplePayload/standard-4  205MB/s ± 2%
-SimplePayload/jsoniter-4  190MB/s ± 1%
-SimplePayload/gojay-4     285MB/s ± 1%
-SimplePayload/jettison-4  306MB/s ± 0%
--
-name                      alloc/op
-SimplePayload/standard-4     144B ± 0%
-SimplePayload/jsoniter-4     152B ± 0%
-SimplePayload/gojay-4        512B ± 0%
-SimplePayload/jettison-4    0.00B
--
-name                      allocs/op
-SimplePayload/standard-4     1.00 ± 0%
-SimplePayload/jsoniter-4     2.00 ± 0%
-SimplePayload/gojay-4        1.00 ± 0%
-SimplePayload/jettison-4     0.00
-</pre></details>
-
-### Complex
-
-Payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L112)
-
-<img src="images/cp-graph.png" alt="Complex Payload Benchmark Graph">
+The benchmarks has been run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a machine with the following specs:
+```
+OS:  Ubuntu 16.04.6 LTS
+CPU: Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
+Mem: 16GB
+Go:  go version go1.13 linux/amd64
+Tag: v0.4.1
+```
 
 <details><summary>Stats</summary><br><pre>
-name                       time/op
-ComplexPayload/standard-4   2.57µs ± 0%
-ComplexPayload/jsoniter-4   2.38µs ± 1%
-ComplexPayload/jettison-4   1.50µs ± 0%
--
-name                       speed
-ComplexPayload/standard-4  151MB/s ± 0%
-ComplexPayload/jsoniter-4  163MB/s ± 1%
-ComplexPayload/jettison-4  258MB/s ± 0%
--
-name                       alloc/op
-ComplexPayload/standard-4     416B ± 0%
-ComplexPayload/jsoniter-4     472B ± 0%
-ComplexPayload/jettison-4    0.00B
--
-name                       allocs/op
-ComplexPayload/standard-4     1.00 ± 0%
-ComplexPayload/jsoniter-4     3.00 ± 0%
-ComplexPayload/jettison-4     0.00
+name                            time/op
+SimplePayload/encoding/json-4      656ns ± 1%
+SimplePayload/jsoniter-4           698ns ± 1%
+SimplePayload/gojay-4              473ns ± 2%
+SimplePayload/jettison-4           443ns ± 2%
+ComplexPayload/encoding/json-4    2.59µs ± 1%
+ComplexPayload/jsoniter-4         2.37µs ± 0%
+ComplexPayload/jettison-4         1.56µs ± 1%
+Interface/encoding/json-4          162ns ± 5%
+Interface/jsoniter-4               140ns ± 3%
+Interface/jettison-4              69.3ns ± 3%
+Map/encoding/json-4               1.20µs ± 1%
+Map/jsoniter-4                    1.09µs ± 0%
+Map/jettison/sort-4                866ns ± 0%
+Map/jettison/nosort-4              381ns ± 1%
+
+name                            speed
+SimplePayload/encoding/json-4    206MB/s ± 1%
+SimplePayload/jsoniter-4         193MB/s ± 1%
+SimplePayload/gojay-4            286MB/s ± 2%
+SimplePayload/jettison-4         305MB/s ± 1%
+ComplexPayload/encoding/json-4   150MB/s ± 1%
+ComplexPayload/jsoniter-4        163MB/s ± 0%
+ComplexPayload/jettison-4        248MB/s ± 1%
+Interface/encoding/json-4       49.4MB/s ± 5%
+Interface/jsoniter-4            57.3MB/s ± 3%
+Interface/jettison-4             115MB/s ± 3%
+Map/encoding/json-4             15.9MB/s ± 1%
+Map/jsoniter-4                  17.5MB/s ± 0%
+Map/jettison/sort-4             21.9MB/s ± 0%
+Map/jettison/nosort-4           49.9MB/s ± 1%
+
+name                            alloc/op
+SimplePayload/encoding/json-4       144B ± 0%
+SimplePayload/jsoniter-4            152B ± 0%
+SimplePayload/gojay-4               512B ± 0%
+SimplePayload/jettison-4           0.00B
+ComplexPayload/encoding/json-4      416B ± 0%
+ComplexPayload/jsoniter-4           472B ± 0%
+ComplexPayload/jettison-4          0.00B
+Interface/encoding/json-4          8.00B ± 0%
+Interface/jsoniter-4               8.00B ± 0%
+Interface/jettison-4               0.00B
+Map/encoding/json-4                 536B ± 0%
+Map/jsoniter-4                      680B ± 0%
+Map/jettison/sort-4                 496B ± 0%
+Map/jettison/nosort-4               128B ± 0%
+
+name                            allocs/op
+SimplePayload/encoding/json-4       1.00 ± 0%
+SimplePayload/jsoniter-4            2.00 ± 0%
+SimplePayload/gojay-4               1.00 ± 0%
+SimplePayload/jettison-4            0.00
+ComplexPayload/encoding/json-4      1.00 ± 0%
+ComplexPayload/jsoniter-4           3.00 ± 0%
+ComplexPayload/jettison-4           0.00
+Interface/encoding/json-4           1.00 ± 0%
+Interface/jsoniter-4                1.00 ± 0%
+Interface/jettison-4                0.00
+Map/encoding/json-4                 13.0 ± 0%
+Map/jsoniter-4                      11.0 ± 0%
+Map/jettison/sort-4                 6.00 ± 0%
+Map/jettison/nosort-4               2.00 ± 0%
 </pre></details>
 
-### Interface
+#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L44)]
 
-<img src="images/iface-graph.png" alt="Interface Benchmark Graph">
+Basic payload with fields of type `string`, `int` and `bool`.
 
-<details><summary>Stats</summary><br><pre>
-name                  time/op
-Interface/standard-4     161ns ± 4%
-Interface/jsoniter-4     141ns ± 1%
-Interface/jettison-4    64.7ns ± 3%
--
-name                  speed
-Interface/standard-4  49.7MB/s ± 4%
-Interface/jsoniter-4  56.8MB/s ± 1%
-Interface/jettison-4   124MB/s ± 3%
--
-name                  alloc/op
-Interface/standard-4     8.00B ± 0%
-Interface/jsoniter-4     8.00B ± 0%
-Interface/jettison-4     0.00B
--
-name                  allocs/op
-Interface/standard-4      1.00 ± 0%
-Interface/jsoniter-4      1.00 ± 0%
-Interface/jettison-4      0.00
-</pre></details>
+<img src="images/simple-payload.png" alt="Simple Payload Benchmark Graph">
 
-### Map
+#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L113)]
 
-Compares Go map marshaling performances, with and without keys sort. [source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L251)
+Large payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types.
 
-<img src="images/map-graph.png" alt="Map Benchmark Graph">
+<img src="images/complex-payload.png" alt="Complex Payload Benchmark Graph">
 
-<details><summary>Stats</summary><br><pre>
-name                   time/op
-Map/standard-4           1.21µs ± 5%
-Map/jsoniter-4           1.07µs ± 1%
-Map/jettison/sort-4       860ns ± 0%
-Map/jettison/nosort-4     379ns ± 1%
--
-name                   speed
-Map/standard-4         15.8MB/s ± 4%
-Map/jsoniter-4         17.7MB/s ± 1%
-Map/jettison/sort-4    22.1MB/s ± 1%
-Map/jettison/nosort-4  50.1MB/s ± 1%
--
-name                   alloc/op
-Map/standard-4             536B ± 0%
-Map/jsoniter-4             680B ± 0%
-Map/jettison/sort-4        496B ± 0%
-Map/jettison/nosort-4      128B ± 0%
--
-name                   allocs/op
-Map/standard-4             13.0 ± 0%
-Map/jsoniter-4             11.0 ± 0%
-Map/jettison/sort-4        6.00 ± 0%
-Map/jettison/nosort-4      2.00 ± 0%
-</pre></details>
+#### Interface [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L209)]
+
+<img src="images/interface.png" alt="Interface Benchmark Graph">
+
+#### Map [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L255)]
+
+Compares Go map marshaling performances, with and without keys sort.
+
+<img src="images/map.png" alt="Map Benchmark Graph">
 
 ## License
 

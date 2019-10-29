@@ -1,0 +1,26 @@
+{
+    "name": "jettison-charts",
+    "version": "0.1.0",
+    "description": "Google Charts generator for Jettison benchmarks",
+    "main": "index.js",
+    "author": "William Poussier",
+    "license": "MIT",
+    "dependencies": {
+        "canvas": "^2.6.0",
+        "commander": "^3.0.2",
+        "decamelize": "^3.2.0",
+        "jsdom": "^15.2.0"
+    },
+    "devDependencies": {
+        "eslint": "^6.6.0",
+        "eslint-config-standard": "^14.1.0",
+        "eslint-plugin-import": "^2.18.2",
+        "eslint-plugin-node": "^10.0.0",
+        "eslint-plugin-promise": "^4.2.1",
+        "eslint-plugin-standard": "^4.0.1",
+        "standard": "^14.3.1"
+    },
+    "scripts": {
+        "test": "npx standard"
+    }
+}
