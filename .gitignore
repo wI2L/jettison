@@ -47,6 +47,7 @@ Godeps/
 
 # CI/CD
 benchstats
+.benchruns
 
 # NodeJS
 node_modules
