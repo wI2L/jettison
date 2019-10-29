@@ -125,28 +125,17 @@ os.Stdout.Write(b)
 
 Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder during marshaling. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
-- **TimeLayout**
-Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
-- **DurationFormat**
-Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
-- **UnixTimestamp**
-Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since Januaray 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
-- **UnsortedMap**
-Disables map keys sort. See [Map](#map) benchmark for performance difference.
-- **ByteArrayAsString**
-Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
-- **RawByteSlice**
-Disables the *base64* default encoding used for byte slices.
-- **NilMapEmpty**
-Encodes nil Go maps as empty JSON objects rather than `null`.
-- **NilSliceEmpty**
-Encodes nil Go slices as empty JSON arrays rather than `null`.
-- **NoStringEscaping**
-Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
-- **NoHTMLEscaping**
-Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
-- **NoUTF8Coercion**
-Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
+- **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
+- **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
+- **UnixTimestamp** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since Januaray 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
+- **UnsortedMap** • Disables map keys sort. See [Map](#map) benchmark for performance difference.
+- **ByteArrayAsString** • Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
+- **RawByteSlice** • Disables the *base64* default encoding used for byte slices.
+- **NilMapEmpty** • Encodes nil Go maps as empty JSON objects rather than `null`.
+- **NilSliceEmpty** • Encodes nil Go slices as empty JSON arrays rather than `null`.
+- **NoStringEscaping** • Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
+- **NoHTMLEscaping** • Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
+- **NoUTF8Coercion** • Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
 
 ## Benchmarks
 
