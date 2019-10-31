@@ -77,6 +77,7 @@ type encodeOpts struct {
 	noStringEscape    bool
 	noUTF8Coercion    bool
 	noHTMLEscape      bool
+	fieldsWhitelist   map[string]struct{}
 }
 
 func newState() *encodeState {
@@ -103,6 +104,7 @@ func (s *encodeState) Reset() {
 	s.opts.noStringEscape = false
 	s.opts.noUTF8Coercion = false
 	s.opts.noHTMLEscape = false
+	s.opts.fieldsWhitelist = nil
 }
 
 // UnsupportedTypeError is the error returned by

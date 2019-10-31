@@ -100,7 +100,7 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 
 // newStructFieldInstr returns a new instruction
 // to encode the field of a struct.
-func newStructFieldInstr(f field) (Instruction, error) {
+func newStructFieldInstr(f field) (instr Instruction, err error) {
 	ft := f.sf.Type
 	isPtr := ft.Kind() == reflect.Ptr
 	if isPtr {
@@ -111,7 +111,7 @@ func newStructFieldInstr(f field) (Instruction, error) {
 	// field is a pointer, the instruction is then
 	// wrapped with another one that writes null
 	// if the pointer is nil.
-	instr, err := cachedTypeInstr(ft)
+	instr, err = cachedTypeInstr(ft)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +128,10 @@ func newStructFieldInstr(f field) (Instruction, error) {
 			len(f.indirSeq), len(f.offsetSeq),
 		)
 	}
+	defer func() {
+		instr = wrapSetAddressable(instr, isPtr)
+		instr = wrapFieldsWhitelistInstr(instr, f.name)
+	}()
 	// If f is an embedded pointer field and there
 	// is no other fields in the parent, the received
 	// pointer points to the field itself.
@@ -138,13 +142,30 @@ func newStructFieldInstr(f field) (Instruction, error) {
 	// omitempty option and writing the field's name.
 	// The last offset of the sequence is used, which
 	// correspond to that of the field.
-	instr = wrapSetAddressable(wrapStructFieldInstr(instr, f, isPtr, ft), isPtr)
+	instr = wrapStructFieldInstr(instr, f, isPtr, ft)
 
 	if len(f.indirSeq) > 0 {
 		return indirInstr(instr, f), nil
 	}
 	// Nothing to follow.
 	return instr, nil
+}
+
+// wrapFieldsWhitelistInstr returns a wrapped instruction
+// of instr that encodes a struct field only if its name
+// is whitelisted.
+func wrapFieldsWhitelistInstr(instr Instruction, name string) Instruction {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		// When the whitelist is empty, all fields
+		// are encoded.
+		if es.opts.fieldsWhitelist == nil {
+			return instr(p, w, es)
+		}
+		if _, ok := es.opts.fieldsWhitelist[name]; ok {
+			return instr(p, w, es)
+		}
+		return nil
+	}
 }
 
 // wrapSetAddressable returns a wrapped instruction

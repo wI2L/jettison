@@ -657,6 +657,7 @@ func TestUnsupportedStructFieldTypes(t *testing.T) {
 
 // TestStructFieldName tests that invalid struct
 // field names are ignored during encoding.
+//nolint:staticcheck
 func TestStructFieldName(t *testing.T) {
 	type x struct {
 		A  string `json:" "`    // valid name
@@ -1573,6 +1574,7 @@ type bothMarshaler interface {
 // TestNilMarshaler tests that even if a nil interface
 // value is passed in, as long as it implements MarshalJSON,
 // it should be marshaled.
+//nolint:godox
 func TestNilMarshaler(t *testing.T) {
 	testdata := []struct {
 		v interface{}
@@ -1808,7 +1810,7 @@ func TestTime(t *testing.T) {
 			t.Error(err)
 		}
 		if s := buf.String(); s != tt.Str {
-			t.Errorf("for layout `%s`, got %s, want %s", tt.Layout, s, tt.Str)
+			t.Errorf("for layout %#q, got %s, want %s", tt.Layout, s, tt.Str)
 		}
 	}
 	buf.Reset()
@@ -2353,6 +2355,59 @@ func TestInstrCache(t *testing.T) {
 	p2 := reflect.ValueOf(i2).Pointer()
 	if p1 != p2 {
 		t.Errorf("expected instructions to be the same: %v != %v", p1, p2)
+	}
+}
+
+func TestFieldsWhitelist(t *testing.T) {
+	type (
+		y struct {
+			E string `json:"epsilon"`
+			F string
+		}
+		x struct {
+			A string `json:"alpha"`
+			B string `json:"beta"`
+			C string
+			D string
+			y
+		}
+	)
+	enc, err := NewEncoder(reflect.TypeOf(x{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	xx := x{
+		A: "Loreum",
+		C: "Ipsum",
+		y: y{
+			E: "Sit Amet",
+		},
+	}
+	var buf bytes.Buffer
+	if err := enc.Encode(&xx, &buf, WithFields([]string{"alpha", "C", "epsilon"})); err != nil {
+		t.Fatal(err)
+	}
+	var (
+		b = buf.Bytes()
+		m = make(map[string]interface{})
+	)
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m) != 3 {
+		t.Errorf("got %d fields, want 3", len(m))
+	}
+	for _, r := range []struct {
+		Key string
+		Val string
+	}{
+		{"alpha", "Loreum"},
+		{"C", "Ipsum"},
+		{"epsilon", "Sit Amet"},
+	} {
+		if v, ok := m[r.Key]; !ok || v != r.Val {
+			t.Errorf("expected to found key %#q with value %#q", r.Key, r.Val)
+		}
 	}
 }
 
