@@ -23,6 +23,7 @@ type field struct {
 	tag        bool
 	quoted     bool
 	omitEmpty  bool
+	isPtr      bool
 
 	// offsetSeq is the sequence of offsets
 	// between top-level pointer to field.
@@ -66,8 +67,12 @@ func (x byIndex) Less(i, j int) bool {
 // unexpected, or if one of the struct fields has an
 // unsupported type.
 func newStructInstr(t reflect.Type) (Instruction, error) {
+	type fieldInstr struct {
+		instr Instruction
+		name  string
+	}
 	fields := structFields(t)
-	instrs := make([]Instruction, 0, len(fields))
+	instrs := make([]fieldInstr, 0, len(fields))
 
 	// Iterate over the list of fields scanned
 	// and add an instruction to encode each.
@@ -78,19 +83,33 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 				fmt.Sprintf("field %s of struct %s", f.name, t),
 			}
 		}
-		instrs = append(instrs, instr)
+		instrs = append(instrs, fieldInstr{
+			instr: instr,
+			name:  f.name,
+		})
 	}
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
 		if err := w.WriteByte('{'); err != nil {
 			return err
 		}
+		shouldEncodeField := func(i int) bool {
+			_, ok := es.opts.fieldsWhitelist[instrs[i].name]
+			return ok
+		}
 		// Reinitialize the current first-field mark
 		// to encode the object in the next depth-level.
 		ff := es.firstField
 		es.firstField = false
+
 		for i := 0; i < len(instrs); i++ {
-			if err := instrs[i](p, w, es); err != nil {
-				return err
+			// Encode all fields if the whitelist is empty,
+			// otherwise lookup for the name of the field
+			// to know if it must be.
+			if es.opts.fieldsWhitelist == nil ||
+				es.opts.fieldsWhitelist != nil && shouldEncodeField(i) {
+				if err := instrs[i].instr(p, w, es); err != nil {
+					return err
+				}
 			}
 		}
 		es.firstField = ff
@@ -102,8 +121,7 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 // to encode the field of a struct.
 func newStructFieldInstr(f field) (instr Instruction, err error) {
 	ft := f.sf.Type
-	isPtr := ft.Kind() == reflect.Ptr
-	if isPtr {
+	if f.isPtr {
 		ft = ft.Elem()
 	}
 	// Find the adequate instruction to encode the
@@ -129,43 +147,25 @@ func newStructFieldInstr(f field) (instr Instruction, err error) {
 		)
 	}
 	defer func() {
-		instr = wrapSetAddressable(instr, isPtr)
-		instr = wrapFieldsWhitelistInstr(instr, f.name)
+		instr = wrapSetAddressable(instr, f.isPtr)
 	}()
 	// If f is an embedded pointer field and there
 	// is no other fields in the parent, the received
 	// pointer points to the field itself.
-	if f.sf.Anonymous && f.pfc == 1 && isPtr {
+	if f.sf.Anonymous && f.pfc == 1 && f.isPtr {
 		return wrapAnonymousFieldInstr(instr, f), nil
 	}
 	// Wrap resolved type instruction to handle the
 	// omitempty option and writing the field's name.
 	// The last offset of the sequence is used, which
 	// correspond to that of the field.
-	instr = wrapStructFieldInstr(instr, f, isPtr, ft)
+	instr = wrapStructFieldInstr(instr, f, f.isPtr, ft)
 
 	if len(f.indirSeq) > 0 {
 		return indirInstr(instr, f), nil
 	}
 	// Nothing to follow.
 	return instr, nil
-}
-
-// wrapFieldsWhitelistInstr returns a wrapped instruction
-// of instr that encodes a struct field only if its name
-// is whitelisted.
-func wrapFieldsWhitelistInstr(instr Instruction, name string) Instruction {
-	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		// When the whitelist is empty, all fields
-		// are encoded.
-		if es.opts.fieldsWhitelist == nil {
-			return instr(p, w, es)
-		}
-		if _, ok := es.opts.fieldsWhitelist[name]; ok {
-			return instr(p, w, es)
-		}
-		return nil
-	}
 }
 
 // wrapSetAddressable returns a wrapped instruction
@@ -434,6 +434,7 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 				name:       name,
 				tag:        tagged,
 				index:      index,
+				isPtr:      isPtr,
 				omitEmpty:  opts.Contains("omitempty"),
 				quoted:     opts.Contains("string") && isPrimitiveType(ft),
 				keyNonEsc:  []byte(`,"` + name + `":`),
