@@ -2358,6 +2358,8 @@ func TestInstrCache(t *testing.T) {
 	}
 }
 
+// TestFieldsWhitelist tests that a list of first-level fields
+// can be whitelisted during the encoding of a struct.
 func TestFieldsWhitelist(t *testing.T) {
 	type (
 		y struct {

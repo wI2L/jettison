@@ -116,12 +116,13 @@ func NoUTF8Coercion() Option {
 	}
 }
 
-// WithFields sets the list of fields which are
-// to be encoded when marshaling a struct. The
-// fields are identified by their name used, in the
-// final JSON payload. Any subsequent modification
-// of the given slice will have no effect because
-// it is copied during the creation of the option.
+// WithFields sets the list of first-level fields
+// which are to be encoded when marshaling a struct.
+// The fields are identified by their name that are
+// used in the final JSON payload.
+// Any subsequent modification of the given slice will
+// have no effect because a copy is made when the option
+// is created.
 func WithFields(fields []string) Option {
 	m := make(map[string]struct{})
 	for _, f := range fields {

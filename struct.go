@@ -92,7 +92,14 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 		if err := w.WriteByte('{'); err != nil {
 			return err
 		}
+		// shouldEncodeField returns whether a field should
+		// be encoded based on the presence of its name in
+		// the field whitelist. It always return true if the
+		// whitelist is empty.
 		shouldEncodeField := func(i int) bool {
+			if es.opts.fieldsWhitelist == nil {
+				return true
+			}
 			_, ok := es.opts.fieldsWhitelist[instrs[i].name]
 			return ok
 		}
@@ -101,18 +108,20 @@ func newStructInstr(t reflect.Type) (Instruction, error) {
 		ff := es.firstField
 		es.firstField = false
 
+		es.depthLevel++
+
 		for i := 0; i < len(instrs); i++ {
-			// Encode all fields if the whitelist is empty,
-			// otherwise lookup for the name of the field
-			// to know if it must be.
-			if es.opts.fieldsWhitelist == nil ||
-				es.opts.fieldsWhitelist != nil && shouldEncodeField(i) {
-				if err := instrs[i].instr(p, w, es); err != nil {
-					return err
-				}
+			// Ignore whitelist for fields that are not
+			// part of the first-level struct.
+			if es.depthLevel == 1 && !shouldEncodeField(i) {
+				continue
+			}
+			if err := instrs[i].instr(p, w, es); err != nil {
+				return err
 			}
 		}
 		es.firstField = ff
+		es.depthLevel--
 		return w.WriteByte('}')
 	}, nil
 }

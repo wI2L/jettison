@@ -59,6 +59,11 @@ type encodeState struct {
 	// addressable tracks whether the value
 	// to encode is addressable.
 	addressable bool
+
+	// depthLevel tracks the depth level of
+	// the field being encoded within a struct.
+	// The value 1 represents the top-level.
+	depthLevel int
 }
 
 // encodeOpts represents the runtime options
@@ -93,6 +98,7 @@ func newState() *encodeState {
 
 func (s *encodeState) Reset() {
 	s.firstField = false
+	s.depthLevel = 0
 	s.opts.timeLayout = defaultTimeLayout
 	s.opts.useTimestamps = false
 	s.opts.durationFmt = DurationString

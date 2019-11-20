@@ -124,3 +124,46 @@ func Example_customMarshaler() {
 	// Output:
 	// ["unknown","zebra","gopher","zebra","unknown","zebra","gopher"]
 }
+
+func ExampleWithFields() {
+	type Z struct {
+		Omega int `json:"ω"`
+	}
+	type Y struct {
+		Pi string `json:"π"`
+	}
+	type X struct {
+		Z     Z      `json:"Z"`
+		Alpha string `json:"α"`
+		Beta  string `json:"β"`
+		Gamma string
+		Y
+	}
+	x := X{
+		Z:     Z{Omega: 42},
+		Alpha: "1",
+		Beta:  "2",
+		Gamma: "3",
+		Y:     Y{Pi: "4"},
+	}
+	enc, err := jettison.NewEncoder(reflect.TypeOf(x))
+	if err != nil {
+		log.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := enc.Encode(&x, &buf); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s\n", buf.String())
+
+	buf.Reset()
+	if err := enc.Encode(&x, &buf,
+		jettison.WithFields([]string{"Z", "β", "Gamma", "π"}),
+	); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s\n", buf.String())
+	// Output:
+	// {"Z":{"ω":42},"α":"1","β":"2","Gamma":"3","π":"4"}
+	// {"Z":{"ω":42},"β":"2","Gamma":"3","π":"4"}
+}
