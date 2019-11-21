@@ -97,7 +97,7 @@ func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, e
 	}
 	// Special types must be checked first, because a Duration
 	// is an int64, json.Number is a string, and both would be
-	// interpreted as a primitive.
+	// interpreted as a basic type.
 	// Also, time.Time implements the TextMarshaler interface,
 	// but we want to use a special instruction instead.
 	if isSpecialType(t) {
@@ -107,8 +107,8 @@ func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, e
 		return instr, nil
 	}
 def:
-	if isPrimitiveType(t) {
-		return primitiveInstr(t.Kind()), nil
+	if isBasicType(t) {
+		return basicTypeInstr(t.Kind()), nil
 	}
 	var (
 		err error
@@ -327,9 +327,9 @@ func specialTypeInstr(t reflect.Type) Instruction {
 	}
 }
 
-// primitiveInstr returns the instruction associated
-// with the primitive type that has the given kind.
-func primitiveInstr(k reflect.Kind) Instruction {
+// basicTypeInstr returns the instruction associated
+// with the basic type that has the given kind.
+func basicTypeInstr(k reflect.Kind) Instruction {
 	switch k {
 	case reflect.String:
 		return stringInstr
@@ -970,10 +970,10 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 				_, err := w.WriteString("[]")
 				return err
 			}
-			// A nil slice cannot be treated like a primitive
-			// type because the pointer will always point to a
-			// non-nil slice header which contains a Data field
-			// with an empty memory address.
+			// A nil slice cannot be treated like a basic
+			// type because the pointer will always point
+			// to a non-nil slice header which contains a
+			// Data field with an empty memory address.
 			_, err := w.WriteString("null")
 			return err
 		}
@@ -1157,7 +1157,7 @@ func isSpecialType(t reflect.Type) bool {
 	return t == timeType || t == durationType || t == numberType
 }
 
-func isPrimitiveType(t reflect.Type) bool {
+func isBasicType(t reflect.Type) bool {
 	return isInteger(t) || isFloatingPoint(t) || isString(t) || isBoolean(t)
 }
 

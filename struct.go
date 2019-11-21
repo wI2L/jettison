@@ -445,7 +445,7 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 				index:      index,
 				isPtr:      isPtr,
 				omitEmpty:  opts.Contains("omitempty"),
-				quoted:     opts.Contains("string") && isPrimitiveType(ft),
+				quoted:     opts.Contains("string") && isBasicType(ft),
 				keyNonEsc:  []byte(`,"` + name + `":`),
 				keyEscHTML: append([]byte{}, escBuf.Bytes()...), // copy
 				offsetSeq:  f.offsetSeq,

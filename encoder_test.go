@@ -124,9 +124,9 @@ func TestNilValues(t *testing.T) {
 	}
 }
 
-// TestPrimitiveTypes tests that primitive
+// TestBasicTypes tests that basic
 // types can be encoded.
-func TestPrimitiveTypes(t *testing.T) {
+func TestBasicTypes(t *testing.T) {
 	testdata := []struct {
 		Val interface{}
 		Str string
@@ -423,35 +423,35 @@ func TestCompositeMapValue(t *testing.T) {
 }
 
 type (
-	intTextMarshaler    int
-	intPtrTextMarshaler int
-	strJSONMarshaler    string
-	strPtrJSONMarshaler string
+	valTextMarshaler int
+	refTextMarshaler int
+	valJSONMarshaler string
+	refJSONMarshaler string
 )
 
-func (im intTextMarshaler) MarshalText() ([]byte, error) {
+func (im valTextMarshaler) MarshalText() ([]byte, error) {
 	return []byte(strconv.Itoa(int(im))), nil
 }
-func (im *intPtrTextMarshaler) MarshalText() ([]byte, error) {
+func (im *refTextMarshaler) MarshalText() ([]byte, error) {
 	return []byte(strconv.Itoa(int(*im))), nil
 }
-func (sm strJSONMarshaler) MarshalJSON() ([]byte, error) {
+func (sm valJSONMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(string(sm))), nil
 }
-func (sm *strPtrJSONMarshaler) MarshalJSON() ([]byte, error) {
+func (sm *refJSONMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(string(*sm))), nil
 }
 
 type (
-	structTextMarshaler    struct{ L, R string }
-	structPtrTextMarshaler struct{ L, R string }
+	compositeValTextMarshaler struct{ L, R string }
+	compositeRefTextMarshaler struct{ L, R string }
 )
 
-func (sm structTextMarshaler) MarshalText() ([]byte, error) {
-	return []byte(fmt.Sprintf("%s:%s", sm.L, sm.R)), nil
+func (m compositeValTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%s:%s", m.L, m.R)), nil
 }
-func (spm *structPtrTextMarshaler) MarshalText() ([]byte, error) {
-	return []byte(fmt.Sprintf("%s:%s", spm.L, spm.R)), nil
+func (m *compositeRefTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%s:%s", m.L, m.R)), nil
 }
 
 // TestTextMarshalerMapKey tests that a map with
@@ -459,11 +459,11 @@ func (spm *structPtrTextMarshaler) MarshalText() ([]byte, error) {
 // can be encoded.
 func TestTextMarshalerMapKey(t *testing.T) {
 	var (
-		im  intTextMarshaler    = 42
-		ipm intPtrTextMarshaler = 84
-		sm                      = structTextMarshaler{L: "A", R: "B"}
-		spm                     = structPtrTextMarshaler{L: "A", R: "B"}
-		ip                      = &net.IP{127, 0, 0, 1}
+		im  valTextMarshaler = 42
+		ipm refTextMarshaler = 84
+		sm                   = compositeValTextMarshaler{L: "A", R: "B"}
+		spm                  = compositeRefTextMarshaler{L: "A", R: "B"}
+		ip                   = &net.IP{127, 0, 0, 1}
 	)
 	valid := []interface{}{
 		map[time.Time]string{
@@ -478,22 +478,22 @@ func TestTextMarshalerMapKey(t *testing.T) {
 			// the results cannot be compared.
 			// nil: "",
 		},
-		map[structTextMarshaler]string{sm: "ab"},
-		map[*structTextMarshaler]string{
+		map[compositeValTextMarshaler]string{sm: "ab"},
+		map[*compositeValTextMarshaler]string{
 			&sm: "ab",
 			// nil: "",
 		},
-		map[*structPtrTextMarshaler]string{
+		map[*compositeRefTextMarshaler]string{
 			&spm: "ab",
 			// nil: "",
 		},
-		map[intTextMarshaler]string{im: "42"},
-		map[*intTextMarshaler]string{
+		map[valTextMarshaler]string{im: "42"},
+		map[*valTextMarshaler]string{
 			&im: "42",
 			// nil: "",
 		},
-		map[intPtrTextMarshaler]string{ipm: "42"},
-		map[*intPtrTextMarshaler]string{
+		map[refTextMarshaler]string{ipm: "42"},
+		map[*refTextMarshaler]string{
 			&ipm: "42",
 			// nil: "",
 		},
@@ -517,7 +517,7 @@ func TestInvalidTextMarshalerMapKey(t *testing.T) {
 	for _, tt := range []interface{}{
 		// Non-pointer value of a pointer-receiver
 		// type isn't a valid map key type.
-		map[structPtrTextMarshaler]string{
+		map[compositeRefTextMarshaler]string{
 			{L: "A", R: "B"}: "ab",
 		},
 	} {
@@ -539,9 +539,9 @@ func TestInvalidTextMarshalerMapKey(t *testing.T) {
 	}
 }
 
-// TestPrimitiveStructFieldTypes tests that struct
-// fields of primitive types can be encoded.
-func TestPrimitiveStructFieldTypes(t *testing.T) {
+// TestBasicStructFieldTypes tests that struct
+// fields of basic types can be encoded.
+func TestBasicStructFieldTypes(t *testing.T) {
 	type x struct {
 		A  string  `json:"a"`
 		B1 int     `json:"b1"`
@@ -595,10 +595,10 @@ func TestPrimitiveStructFieldTypes(t *testing.T) {
 	}
 }
 
-// TestPrimitiveStructFieldPointerTypes tests
+// TestBasicStructFieldPointerTypes tests
 // that nil and non-nil struct field pointers of
-// primitive types can be encoded.
-func TestPrimitiveStructFieldPointerTypes(t *testing.T) {
+// basic types can be encoded.
+func TestBasicStructFieldPointerTypes(t *testing.T) {
 	type x struct {
 		A *string  `json:"a"`
 		B *int     `json:"b"`
@@ -1311,7 +1311,7 @@ func TestAnonymousFields(t *testing.T) {
 }
 
 // TestEmbeddedTypes tests that embedded struct
-// fields of composite and primitive types are
+// fields of composite and basic types are
 // encoded whether they are exported.
 func TestEmbeddedTypes(t *testing.T) {
 	type (
@@ -1390,32 +1390,32 @@ func TestRecursiveType(t *testing.T) {
 // the test ensures that MarshalJSON has priority.
 func TestJSONMarshaler(t *testing.T) {
 	// T = Non-pointer receiver of composite type.
-	// S = Non-pointer receiver of primitive type.
+	// S = Non-pointer receiver of basic type.
 	// I = Pointer receiver of composite type.
-	// P = Pointer receiver of primitive type.
+	// P = Pointer receiver of basic type.
 	type x struct {
-		T1 time.Time            `json:"t1"`
-		T2 time.Time            `json:"t2,omitempty"`
-		T3 *time.Time           `json:"t3"`
-		T4 *time.Time           `json:"t4"`           // nil
-		T5 *time.Time           `json:"t5,omitempty"` // nil
-		S1 strJSONMarshaler     `json:"s1,omitempty"`
-		S2 strJSONMarshaler     `json:"s2,omitempty"`
-		S3 strJSONMarshaler     `json:"s3"`
-		S4 *strJSONMarshaler    `json:"s4"`
-		S5 *strJSONMarshaler    `json:"s5"`           // nil
-		S6 *strJSONMarshaler    `json:"s6,omitempty"` // nil
-		I1 big.Int              `json:"i1"`
-		I2 big.Int              `json:"i2,omitempty"`
-		I3 *big.Int             `json:"i3"`
-		I4 *big.Int             `json:"i4"`           // nil
-		I5 *big.Int             `json:"i5,omitempty"` // nil
-		P1 strPtrJSONMarshaler  `json:"p1,omitempty"`
-		P2 strPtrJSONMarshaler  `json:"p2,omitempty"`
-		P3 strPtrJSONMarshaler  `json:"p3"`
-		P4 *strPtrJSONMarshaler `json:"p4"`
-		P5 *strPtrJSONMarshaler `json:"p5"`           // nil
-		P6 *strPtrJSONMarshaler `json:"p6,omitempty"` // nil
+		T1 time.Time         `json:"t1"`
+		T2 time.Time         `json:"t2,omitempty"`
+		T3 *time.Time        `json:"t3"`
+		T4 *time.Time        `json:"t4"`           // nil
+		T5 *time.Time        `json:"t5,omitempty"` // nil
+		S1 valJSONMarshaler  `json:"s1,omitempty"`
+		S2 valJSONMarshaler  `json:"s2,omitempty"`
+		S3 valJSONMarshaler  `json:"s3"`
+		S4 *valJSONMarshaler `json:"s4"`
+		S5 *valJSONMarshaler `json:"s5"`           // nil
+		S6 *valJSONMarshaler `json:"s6,omitempty"` // nil
+		I1 big.Int           `json:"i1"`
+		I2 big.Int           `json:"i2,omitempty"`
+		I3 *big.Int          `json:"i3"`
+		I4 *big.Int          `json:"i4"`           // nil
+		I5 *big.Int          `json:"i5,omitempty"` // nil
+		P1 refJSONMarshaler  `json:"p1,omitempty"`
+		P2 refJSONMarshaler  `json:"p2,omitempty"`
+		P3 refJSONMarshaler  `json:"p3"`
+		P4 *refJSONMarshaler `json:"p4"`
+		P5 *refJSONMarshaler `json:"p5"`           // nil
+		P6 *refJSONMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
@@ -1423,8 +1423,8 @@ func TestJSONMarshaler(t *testing.T) {
 	}
 	var (
 		now = time.Now()
-		sm  = strJSONMarshaler("Loreum")
-		spm = strPtrJSONMarshaler("Loreum")
+		sm  = valJSONMarshaler("Loreum")
+		spm = refJSONMarshaler("Loreum")
 	)
 	xx := x{
 		T1: now,
@@ -1462,40 +1462,40 @@ func TestJSONMarshaler(t *testing.T) {
 // quoted string of its MashalText method call result.
 func TestTextMarshaler(t *testing.T) {
 	// S = Non-pointer receiver of composite type.
-	// I = Non-pointer receiver of primitive type.
+	// I = Non-pointer receiver of basic type.
 	// F = Pointer receiver of composite kind.
-	// P = Pointer receiver of primitive type.
+	// P = Pointer receiver of basic type.
 	type x struct {
-		S1 net.IP               `json:"s1"`
-		S2 net.IP               `json:"s2,omitempty"`
-		S3 *net.IP              `json:"s3"`
-		S4 *net.IP              `json:"s4"`           // nil
-		S5 *net.IP              `json:"s5,omitempty"` // nil
-		I1 intTextMarshaler     `json:"i1,omitempty"`
-		I2 intTextMarshaler     `json:"i2,omitempty"`
-		I3 intTextMarshaler     `json:"i3"`
-		I4 *intTextMarshaler    `json:"i4"`
-		I5 *intTextMarshaler    `json:"i5"`           // nil
-		I6 *intTextMarshaler    `json:"i6,omitempty"` // nil
-		F1 big.Float            `json:"f1"`
-		F2 big.Float            `json:"f2,omitempty"`
-		F3 *big.Float           `json:"f3"`
-		F4 *big.Float           `json:"f4"`           // nil
-		F5 *big.Float           `json:"f5,omitempty"` // nil
-		P1 intPtrTextMarshaler  `json:"p1,omitempty"`
-		P2 intPtrTextMarshaler  `json:"p2,omitempty"`
-		P3 intPtrTextMarshaler  `json:"p3"`
-		P4 *intPtrTextMarshaler `json:"p4"`
-		P5 *intPtrTextMarshaler `json:"p5"`           // nil
-		P6 *intPtrTextMarshaler `json:"p6,omitempty"` // nil
+		S1 net.IP            `json:"s1"`
+		S2 net.IP            `json:"s2,omitempty"`
+		S3 *net.IP           `json:"s3"`
+		S4 *net.IP           `json:"s4"`           // nil
+		S5 *net.IP           `json:"s5,omitempty"` // nil
+		I1 valTextMarshaler  `json:"i1,omitempty"`
+		I2 valTextMarshaler  `json:"i2,omitempty"`
+		I3 valTextMarshaler  `json:"i3"`
+		I4 *valTextMarshaler `json:"i4"`
+		I5 *valTextMarshaler `json:"i5"`           // nil
+		I6 *valTextMarshaler `json:"i6,omitempty"` // nil
+		F1 big.Float         `json:"f1"`
+		F2 big.Float         `json:"f2,omitempty"`
+		F3 *big.Float        `json:"f3"`
+		F4 *big.Float        `json:"f4"`           // nil
+		F5 *big.Float        `json:"f5,omitempty"` // nil
+		P1 refTextMarshaler  `json:"p1,omitempty"`
+		P2 refTextMarshaler  `json:"p2,omitempty"`
+		P3 refTextMarshaler  `json:"p3"`
+		P4 *refTextMarshaler `json:"p4"`
+		P5 *refTextMarshaler `json:"p5"`           // nil
+		P6 *refTextMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var (
-		im  = intTextMarshaler(42)
-		ipm = intPtrTextMarshaler(42)
+		im  = valTextMarshaler(42)
+		ipm = refTextMarshaler(42)
 	)
 	xx := x{
 		S1: net.IP{192, 168, 0, 1},
@@ -1621,21 +1621,21 @@ var errMarshaler = errors.New("")
 
 type (
 	errorJSONMarshaler    struct{}
-	errorPtrJSONMarshaler struct{}
+	errorRefJSONMarshaler struct{}
 	errorTextMarshaler    struct{}
-	errorPtrTextMarshaler struct{}
+	errorRefTextMarshaler struct{}
 	errorMarshaler        struct{}
-	errorPtrMarshaler     struct{}
+	errorRefMarshaler     struct{}
 )
 
 func (errorJSONMarshaler) MarshalJSON() ([]byte, error)     { return nil, errMarshaler }
-func (*errorPtrJSONMarshaler) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
+func (*errorRefJSONMarshaler) MarshalJSON() ([]byte, error) { return nil, errMarshaler }
 
 func (errorTextMarshaler) MarshalText() ([]byte, error)     { return nil, errMarshaler }
-func (*errorPtrTextMarshaler) MarshalText() ([]byte, error) { return nil, errMarshaler }
+func (*errorRefTextMarshaler) MarshalText() ([]byte, error) { return nil, errMarshaler }
 
 func (errorMarshaler) WriteJSON(_ Writer) error     { return errMarshaler }
-func (*errorPtrMarshaler) WriteJSON(_ Writer) error { return errMarshaler }
+func (*errorRefMarshaler) WriteJSON(_ Writer) error { return errMarshaler }
 
 // TestMarshalerError tests that a MarshalerError
 // is returned when a MarshalText or a MarshalJSON
@@ -1643,11 +1643,11 @@ func (*errorPtrMarshaler) WriteJSON(_ Writer) error { return errMarshaler }
 func TestMarshalerError(t *testing.T) {
 	for _, tt := range []interface{}{
 		errorJSONMarshaler{},
-		&errorPtrJSONMarshaler{},
+		&errorRefJSONMarshaler{},
 		errorTextMarshaler{},
-		&errorPtrTextMarshaler{},
+		&errorRefTextMarshaler{},
 		errorMarshaler{},
-		&errorPtrMarshaler{},
+		&errorRefMarshaler{},
 	} {
 		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
@@ -1677,85 +1677,85 @@ func TestMarshalerError(t *testing.T) {
 }
 
 type (
-	stringMarshaler    string
-	stringPtrMarshaler string
-	structMarshaler    struct{}
-	structPtrMarshaler struct{}
+	basicValMarshaler     string
+	basicRefMarshaler     string
+	compositeValMarshaler struct{}
+	compositeRefMarshaler struct{}
 )
 
-func (wm stringMarshaler) WriteJSON(w Writer) error {
+func (wm basicValMarshaler) WriteJSON(w Writer) error {
 	_, err := w.WriteString(strconv.Quote(string(wm)))
 	return err
 }
-func (wm stringMarshaler) MarshalJSON() ([]byte, error) {
+func (wm basicValMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(string(wm))), nil
 }
-func (wm *stringPtrMarshaler) WriteJSON(w Writer) error {
+func (wm *basicRefMarshaler) WriteJSON(w Writer) error {
 	_, err := w.WriteString(strconv.Quote(string(*wm)))
 	return err
 }
-func (wm *stringPtrMarshaler) MarshalJSON() ([]byte, error) {
+func (wm *basicRefMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(string(*wm))), nil
 }
-func (structMarshaler) WriteJSON(w Writer) error {
+func (compositeValMarshaler) WriteJSON(w Writer) error {
 	_, err := w.WriteString(`"Loreum"`)
 	return err
 }
-func (structMarshaler) MarshalJSON() ([]byte, error) {
+func (compositeValMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(`"Loreum"`), nil
 }
-func (*structPtrMarshaler) WriteJSON(w Writer) error {
+func (*compositeRefMarshaler) WriteJSON(w Writer) error {
 	_, err := w.WriteString(`"Loreum"`)
 	return err
 }
-func (*structPtrMarshaler) MarshalJSON() ([]byte, error) {
+func (*compositeRefMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(`"Loreum"`), nil
 }
 
 func TestMarshaler(t *testing.T) {
 	// S = Non-pointer receiver of composite type.
-	// I = Non-pointer receiver of primitive type.
+	// I = Non-pointer receiver of basic type.
 	// F = Pointer receiver of composite kind.
-	// P = Pointer receiver of primitive type.
+	// P = Pointer receiver of basic type.
 	type x struct {
-		S1 structMarshaler     `json:"s1"`
-		S2 structMarshaler     `json:"s2,omitempty"`
-		S3 *structMarshaler    `json:"s3"`
-		S4 *structMarshaler    `json:"s4"`           // nil
-		S5 *structMarshaler    `json:"s5,omitempty"` // nil
-		I1 stringMarshaler     `json:"i1,omitempty"`
-		I2 stringMarshaler     `json:"i2,omitempty"`
-		I3 stringMarshaler     `json:"i3"`
-		I4 *stringMarshaler    `json:"i4"`
-		I5 *stringMarshaler    `json:"i5"`           // nil
-		I6 *stringMarshaler    `json:"i6,omitempty"` // nil
-		F1 structPtrMarshaler  `json:"f1"`
-		F2 structPtrMarshaler  `json:"f2,omitempty"`
-		F3 *structPtrMarshaler `json:"f3"`
-		F4 *structPtrMarshaler `json:"f4"`           // nil
-		F5 *structPtrMarshaler `json:"f5,omitempty"` // nil
-		P1 stringPtrMarshaler  `json:"p1,omitempty"`
-		P2 stringPtrMarshaler  `json:"p2,omitempty"`
-		P3 stringPtrMarshaler  `json:"p3"`
-		P4 *stringPtrMarshaler `json:"p4"`
-		P5 *stringPtrMarshaler `json:"p5"`           // nil
-		P6 *stringPtrMarshaler `json:"p6,omitempty"` // nil
+		S1 compositeValMarshaler  `json:"s1"`
+		S2 compositeValMarshaler  `json:"s2,omitempty"`
+		S3 *compositeValMarshaler `json:"s3"`
+		S4 *compositeValMarshaler `json:"s4"`           // nil
+		S5 *compositeValMarshaler `json:"s5,omitempty"` // nil
+		I1 basicValMarshaler      `json:"i1,omitempty"`
+		I2 basicValMarshaler      `json:"i2,omitempty"`
+		I3 basicValMarshaler      `json:"i3"`
+		I4 *basicValMarshaler     `json:"i4"`
+		I5 *basicValMarshaler     `json:"i5"`           // nil
+		I6 *basicValMarshaler     `json:"i6,omitempty"` // nil
+		F1 compositeRefMarshaler  `json:"f1"`
+		F2 compositeRefMarshaler  `json:"f2,omitempty"`
+		F3 *compositeRefMarshaler `json:"f3"`
+		F4 *compositeRefMarshaler `json:"f4"`           // nil
+		F5 *compositeRefMarshaler `json:"f5,omitempty"` // nil
+		P1 basicRefMarshaler      `json:"p1,omitempty"`
+		P2 basicRefMarshaler      `json:"p2,omitempty"`
+		P3 basicRefMarshaler      `json:"p3"`
+		P4 *basicRefMarshaler     `json:"p4"`
+		P5 *basicRefMarshaler     `json:"p5"`           // nil
+		P6 *basicRefMarshaler     `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var (
-		swm  = stringMarshaler("Loreun")
-		spwm = stringPtrMarshaler("Ipsum")
+		swm  = basicValMarshaler("Loreun")
+		spwm = basicRefMarshaler("Ipsum")
 	)
 	xx := x{
-		S1: structMarshaler{},
-		S3: &structMarshaler{},
+		S1: compositeValMarshaler{},
+		S3: &compositeValMarshaler{},
 		I1: "Loreun",
 		I4: &swm,
-		F1: structPtrMarshaler{},
-		F3: &structPtrMarshaler{},
+		F1: compositeRefMarshaler{},
+		F3: &compositeRefMarshaler{},
 		P1: "Ipsum",
 		P4: &spwm,
 	}
