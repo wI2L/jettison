@@ -1,5 +1,7 @@
 package jettison
 
+import "context"
+
 // Option overrides a particular behavior
 // of an encoder
 type Option func(*encodeOpts)
@@ -130,5 +132,15 @@ func WithFields(fields []string) Option {
 	}
 	return func(o *encodeOpts) {
 		o.fieldsWhitelist = m
+	}
+}
+
+// WithContext uses the given context during
+// encoding. The context will be passed in to
+// the WriteJSONContext method of types that
+// implement the MarshalerCtx interface.
+func WithContext(ctx context.Context) Option {
+	return func(o *encodeOpts) {
+		o.ctx = ctx
 	}
 }

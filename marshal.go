@@ -2,6 +2,7 @@ package jettison
 
 import (
 	"bytes"
+	"context"
 	"reflect"
 	"sync"
 )
@@ -17,11 +18,21 @@ type Marshaler interface {
 	WriteJSON(Writer) error
 }
 
-// Register records a new compiled encoder for the given
-// type to the cache used by the global functions Marshal
-// and MarshalTo. This may be used during the initialization
-// of a program to speed up the first calls to previously
-// mentioned functions.
+// MarshalerCtx is similar to Marshaler, but the
+// method implemented also takes a context.
+// The use case for this interface is to dynamically
+// control the marshaling of the type implementing it
+// through the values encapsulated by the context,
+// that may be provided at runtime using WithContext.
+type MarshalerCtx interface {
+	WriteJSONContext(context.Context, Writer) error
+}
+
+// Register records a new compiled encoder for the
+// given type to the cache used by the global functions
+// Marshal and MarshalTo. This may be used during the
+// initialization of a program to speed up the first
+// calls to previously mentioned functions.
 func Register(typ reflect.Type) error {
 	if _, ok := encoderCache.Load(typ); ok {
 		return nil

@@ -1,6 +1,7 @@
 package jettison
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +12,10 @@ import (
 	"github.com/modern-go/reflect2"
 )
 
-var statePool = sync.Pool{}
+var (
+	todoCtx   = context.TODO()
+	statePool = sync.Pool{}
+)
 
 // ErrInvalidWriter is the error returned by an
 // Encoder's Encode method when the given Writer
@@ -36,21 +40,21 @@ type Instruction func(unsafe.Pointer, Writer, *encodeState) error
 // the encoder is instantiated.
 type Encoder struct {
 	typ  reflect.Type
-	ins  Instruction
+	root Instruction
 	once sync.Once
 }
 
 type encodeState struct {
 	opts encodeOpts
 
-	// inputPtr indicates if the input
-	// value to encode is a pointer.
-	inputPtr bool
-
 	// scratch is used as temporary buffer
 	// for types conversions using Append*
 	// like functions.
 	scratch [64]byte
+
+	// ptrInput indicates if the input
+	// value to encode is a pointer.
+	ptrInput bool
 
 	// firstField tracks whether the first
 	// field of an object has been written.
@@ -66,14 +70,40 @@ type encodeState struct {
 	depthLevel int
 }
 
+func newState() *encodeState {
+	if v := statePool.Get(); v != nil {
+		s := v.(*encodeState)
+		s.reset()
+		return s
+	}
+	return &encodeState{
+		opts: encodeOpts{
+			ctx:        todoCtx,
+			timeLayout: defaultTimeLayout,
+		},
+	}
+}
+
+func (s *encodeState) reset() {
+	// The fields addressable and ptrInput
+	// are always set prior to encoding
+	// so they don't need to be reset.
+	s.firstField = false
+	s.depthLevel = 0
+
+	s.opts.reset()
+}
+
 // encodeOpts represents the runtime options
 // of an encoder. All options are opt-in and
 // have a default value that comply with the
 // standard library behavior.
 type encodeOpts struct {
+	ctx               context.Context
 	timeLayout        string
-	useTimestamps     bool
 	durationFmt       DurationFmt
+	fieldsWhitelist   map[string]struct{}
+	useTimestamps     bool
 	unsortedMap       bool
 	noBase64Slice     bool
 	byteArrayAsString bool
@@ -82,35 +112,17 @@ type encodeOpts struct {
 	noStringEscape    bool
 	noUTF8Coercion    bool
 	noHTMLEscape      bool
-	fieldsWhitelist   map[string]struct{}
 }
 
-func newState() *encodeState {
-	if v := statePool.Get(); v != nil {
-		s := v.(*encodeState)
-		s.Reset()
-		return s
-	}
-	return &encodeState{opts: encodeOpts{
-		timeLayout: defaultTimeLayout},
-	}
+var zeroOpts = &encodeOpts{
+	ctx:        todoCtx,
+	timeLayout: defaultTimeLayout,
+	// The remaining fields are set
+	// to their zero-value.
 }
 
-func (s *encodeState) Reset() {
-	s.firstField = false
-	s.depthLevel = 0
-	s.opts.timeLayout = defaultTimeLayout
-	s.opts.useTimestamps = false
-	s.opts.durationFmt = DurationString
-	s.opts.unsortedMap = false
-	s.opts.noBase64Slice = false
-	s.opts.byteArrayAsString = false
-	s.opts.nilMapEmpty = false
-	s.opts.nilSliceEmpty = false
-	s.opts.noStringEscape = false
-	s.opts.noUTF8Coercion = false
-	s.opts.noHTMLEscape = false
-	s.opts.fieldsWhitelist = nil
+func (opts *encodeOpts) reset() {
+	*opts = *zeroOpts
 }
 
 // UnsupportedTypeError is the error returned by
@@ -152,25 +164,26 @@ func (e *TypeMismatchError) Error() string {
 	return fmt.Sprintf("incompatible value type: %v", e.SrcType)
 }
 
-type marshalerCtx string
+type marshalerKind string
 
 const (
-	jsonMarshalerCtx     marshalerCtx = "JSON"
-	textMarshalerCtx     marshalerCtx = "Text"
-	jettisonMarshalerCtx marshalerCtx = "Jettison"
+	marshalerKindJSON        marshalerKind = "MarshalJSON"
+	marshalerKindText        marshalerKind = "MarshalText"
+	marshalerKindJettison    marshalerKind = "WriteJSON"
+	marshalerKindJettisonCtx marshalerKind = "WriteJSONContext"
 )
 
 // MarshalerError represents an error from calling
 // a MarshalJSON or MarshalText method.
 type MarshalerError struct {
-	Err error
-	Typ reflect.Type
-	ctx marshalerCtx
+	Err  error
+	Typ  reflect.Type
+	kind marshalerKind
 }
 
 // Error implements the builtin error interface.
 func (e *MarshalerError) Error() string {
-	return fmt.Sprintf("error calling Marshal%s for type %s: %s", e.ctx, e.Typ.String(), e.Err)
+	return fmt.Sprintf("error calling %s for type %s: %s", e.kind, e.Typ.String(), e.Err)
 }
 
 // Unwrap returns the wrapped error.
@@ -221,7 +234,7 @@ func (e *Encoder) compile() error {
 		if e.typ.Kind() == reflect.Ptr {
 			e.typ = e.typ.Elem()
 		}
-		err = e.genInstr(e.typ)
+		err = e.build(e.typ)
 	})
 	return err
 }
@@ -242,11 +255,10 @@ func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option
 		p = reflect2.PtrOf(i)
 	}
 	if p == nil {
-		// The exception for the struct type comes
-		// from the fact that the pointer may points
-		// to an anonymous struct field that should
-		// still be serialized as part of the struct,
-		// or has the omitempty option.
+		// The exception for the struct type comes from the
+		// fact that the pointer may points to an anonymous
+		// struct field that should still be serialized as
+		// part of the struct, or has the omitempty option.
 		if e.typ.Kind() != reflect.Struct {
 			_, err := w.WriteString("null")
 			return err
@@ -260,7 +272,7 @@ func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option
 		return &TypeMismatchError{SrcType: t, EncType: e.typ}
 	}
 	es := newState()
-	es.inputPtr = isPtr
+	es.ptrInput = isPtr
 
 	// Apply options to state.
 	for _, o := range opts {
@@ -270,21 +282,21 @@ func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option
 	}
 	// Execute the instruction with the state
 	// and the given writer.
-	if err := e.ins(p, w, es); err != nil {
+	if err := e.root(p, w, es); err != nil {
 		return err
 	}
 	statePool.Put(es)
 	return nil
 }
 
-// genInstr generates the instruction required to encode
+// build generates the instructions-set required to encode
 // the given type. It returns an error if the type is not
 // supported, such as channel, complex and function values.
-func (e *Encoder) genInstr(t reflect.Type) error {
+func (e *Encoder) build(t reflect.Type) error {
 	ins, err := cachedTypeInstr(t)
 	if err != nil {
 		return err
 	}
-	e.ins = ins
+	e.root = ins
 	return nil
 }

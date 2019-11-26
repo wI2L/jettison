@@ -206,7 +206,7 @@ func wrapAnonymousFieldInstr(instr Instruction, f field) Instruction {
 		}
 		// Dereference if the input eface given to
 		// Encode holds a pointer.
-		if p != nil && es.inputPtr {
+		if p != nil && es.ptrInput {
 			p = *(*unsafe.Pointer)(p)
 			if omit && p == nil {
 				return nil
@@ -289,7 +289,7 @@ func indirInstr(instr Instruction, f field) Instruction {
 		for i, indir := range indirSeq {
 			p = unsafe.Pointer(uintptr(p) + offsetSeq[i])
 			if indir {
-				if i == len(indirSeq)-1 && countSeq[0] == 1 && !es.inputPtr {
+				if i == len(indirSeq)-1 && countSeq[0] == 1 && !es.ptrInput {
 					break
 				}
 				if p != nil {

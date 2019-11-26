@@ -2,6 +2,7 @@ package jettison
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"reflect"
@@ -378,15 +379,23 @@ func benchEscaping(enc *Encoder, s string, opts ...Option) func(b *testing.B) {
 }
 
 type (
-	jsonBM struct{}
-	textBM struct{}
-	jetiBM struct{}
+	jsonBM    struct{}
+	textBM    struct{}
+	jetiBM    struct{}
+	jetiCtxBM struct{}
 )
 
-func (jsonBM) MarshalJSON() ([]byte, error) { return []byte(`"Lorem ipsum dolor sit amet"`), nil }
-func (textBM) MarshalText() ([]byte, error) { return []byte("Lorem ipsum dolor sit amet"), nil }
+const loreumipsum = "Lorem ipsum dolor sit amet"
+
+func (jsonBM) MarshalJSON() ([]byte, error) { return []byte(`"` + loreumipsum + `"`), nil }
+func (textBM) MarshalText() ([]byte, error) { return []byte(loreumipsum), nil }
+
 func (jetiBM) WriteJSON(w Writer) error {
-	_, err := w.WriteString("Lorem ipsum dolor sit amet")
+	_, err := w.WriteString(loreumipsum)
+	return err
+}
+func (jetiCtxBM) WriteJSONContext(_ context.Context, w Writer) error {
+	_, err := w.WriteString(loreumipsum)
 	return err
 }
 
@@ -395,16 +404,18 @@ func BenchmarkMarshaler(b *testing.B) {
 		b.SkipNow()
 	}
 	for _, bb := range []struct {
-		Name string
-		Impl interface{}
+		name string
+		impl interface{}
+		opts []Option
 	}{
-		{"json", jsonBM{}},
-		{"text", textBM{}},
-		{"jettison", jetiBM{}},
+		{"json", jsonBM{}, nil},
+		{"text", textBM{}, nil},
+		{"jettison", jetiBM{}, nil},
+		{"jettisonCtx", jetiCtxBM{}, []Option{WithContext(context.Background())}},
 	} {
 		bb := bb
-		b.Run(bb.Name, func(b *testing.B) {
-			enc, err := NewEncoder(reflect.TypeOf(bb.Impl))
+		b.Run(bb.name, func(b *testing.B) {
+			enc, err := NewEncoder(reflect.TypeOf(bb.impl))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -412,7 +423,7 @@ func BenchmarkMarshaler(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := enc.Encode(bb.Impl, &buf); err != nil {
+				if err := enc.Encode(bb.impl, &buf, bb.opts...); err != nil {
 					b.Fatal(err)
 				}
 				b.SetBytes(int64(buf.Len()))

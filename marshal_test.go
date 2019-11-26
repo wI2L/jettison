@@ -37,7 +37,7 @@ func TestMarshal(t *testing.T) {
 		}
 	})
 	t.Run("parallel", func(t *testing.T) {
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 100; i++ {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 				t.Parallel()
 
@@ -88,7 +88,7 @@ func TestMarshalTo(t *testing.T) {
 		}
 	})
 	t.Run("parallel", func(t *testing.T) {
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 100; i++ {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 				t.Parallel()
 				var buf bytes.Buffer
@@ -153,7 +153,7 @@ func TestCacheEncoder(t *testing.T) {
 		wg = sync.WaitGroup{}
 		cd = sync.NewCond(&mu)
 	)
-	typ := reflect.TypeOf(timeType)
+	typ := reflect.TypeOf(timeTimeType)
 	esl := make([]*Encoder, 100)
 
 	for i := 0; i < 100; i++ {

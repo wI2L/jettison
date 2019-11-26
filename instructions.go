@@ -28,10 +28,11 @@ const hex = "0123456789abcdef"
 const defaultTimeLayout = time.RFC3339Nano
 
 var (
-	timeType          = reflect.TypeOf(time.Time{})
-	durationType      = reflect.TypeOf(time.Duration(0))
-	numberType        = reflect.TypeOf(json.Number(""))
+	timeTimeType      = reflect.TypeOf(time.Time{})
+	timeDurationType  = reflect.TypeOf(time.Duration(0))
+	jsonNumberType    = reflect.TypeOf(json.Number(""))
 	marshalerType     = reflect.TypeOf((*Marshaler)(nil)).Elem()
+	marshalerCtxType  = reflect.TypeOf((*MarshalerCtx)(nil)).Elem()
 	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 )
@@ -93,7 +94,7 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 // composite types, such as struct and map.
 func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, error) {
 	if skipSpecialAndMarshalers {
-		goto def
+		goto skip
 	}
 	// Special types must be checked first, because a Duration
 	// is an int64, json.Number is a string, and both would be
@@ -106,7 +107,7 @@ func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, e
 	if instr := marshalerInstr(t); instr != nil {
 		return instr, nil
 	}
-def:
+skip:
 	if isBasicType(t) {
 		return basicTypeInstr(t.Kind()), nil
 	}
@@ -151,6 +152,14 @@ def:
 }
 
 func marshalerInstr(t reflect.Type) Instruction {
+	if t.Implements(marshalerCtxType) {
+		return newMarshalerCtxInstr(t)
+	}
+	if t.Kind() != reflect.Ptr {
+		if reflect.PtrTo(t).Implements(marshalerCtxType) {
+			return newAddrMarshalerCtxInstr(t)
+		}
+	}
 	if t.Implements(marshalerType) {
 		return newMarshalerInstr(t)
 	}
@@ -191,7 +200,7 @@ func newMarshalerInstr(t reflect.Type) Instruction {
 			return err
 		}
 		if err := m.WriteJSON(w); err != nil {
-			return &MarshalerError{err, t, jettisonMarshalerCtx}
+			return &MarshalerError{err, t, marshalerKindJettison}
 		}
 		return nil
 	}
@@ -205,13 +214,52 @@ func newAddrMarshalerInstr(t reflect.Type) Instruction {
 	finstr, _ := newTypeInstr(t, true)
 
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		if !es.addressable && !es.inputPtr {
+		if !es.addressable && !es.ptrInput {
 			return finstr(p, w, es)
 		}
 		v := reflect.NewAt(t, p)
 		m := v.Interface().(Marshaler)
 		if err := m.WriteJSON(w); err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), jettisonMarshalerCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJettison}
+		}
+		return nil
+	}
+}
+
+// newMarshalerCtxInstr returns an instruction to
+// encode a type which have a pointer receiver, by
+// using its WriteJSONContext method.
+func newMarshalerCtxInstr(t reflect.Type) Instruction {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		v := reflect.NewAt(t, p).Elem()
+
+		m, ok := v.Interface().(MarshalerCtx)
+		if !ok {
+			_, err := w.WriteString("null")
+			return err
+		}
+		if err := m.WriteJSONContext(es.opts.ctx, w); err != nil {
+			return &MarshalerError{err, t, marshalerKindJettisonCtx}
+		}
+		return nil
+	}
+}
+
+// newAddrMarshalerCtxInstr returns an instruction to
+// encode a type which have a non-pointer receiver, by
+// using its WriteJSONContext method.
+func newAddrMarshalerCtxInstr(t reflect.Type) Instruction {
+	// Fallback instruction for non-addressable values.
+	finstr, _ := newTypeInstr(t, true)
+
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		if !es.addressable && !es.ptrInput {
+			return finstr(p, w, es)
+		}
+		v := reflect.NewAt(t, p)
+		m := v.Interface().(MarshalerCtx)
+		if err := m.WriteJSONContext(es.opts.ctx, w); err != nil {
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJettisonCtx}
 		}
 		return nil
 	}
@@ -231,7 +279,7 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 		}
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{err, t, jsonMarshalerCtx}
+			return &MarshalerError{err, t, marshalerKindJSON}
 		}
 		_, err = w.Write(b)
 		return err
@@ -246,14 +294,14 @@ func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 	finstr, _ := newTypeInstr(t, true)
 
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		if !es.addressable && !es.inputPtr {
+		if !es.addressable && !es.ptrInput {
 			return finstr(p, w, es)
 		}
 		v := reflect.NewAt(t, p)
 		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), jsonMarshalerCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJSON}
 		}
 		_, err = w.Write(b)
 		return err
@@ -272,7 +320,7 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{err, t, textMarshalerCtx}
+			return &MarshalerError{err, t, marshalerKindText}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -294,14 +342,14 @@ func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 	finstr, _ := newTypeInstr(t, true)
 
 	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-		if !es.addressable && !es.inputPtr {
+		if !es.addressable && !es.ptrInput {
 			return finstr(p, w, es)
 		}
 		v := reflect.NewAt(t, p)
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), textMarshalerCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindText}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -316,11 +364,11 @@ func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 func specialTypeInstr(t reflect.Type) Instruction {
 	// Keep in sync with isSpecialType.
 	switch t {
-	case timeType:
+	case timeTimeType:
 		return timeInstr
-	case durationType:
+	case timeDurationType:
 		return durationInstr
-	case numberType:
+	case jsonNumberType:
 		return numberInstr
 	default:
 		return nil
@@ -1031,8 +1079,8 @@ func newMapInstr(t reflect.Type) (Instruction, error) {
 	}
 	// The standard library has a strict precedence order
 	// for map key types, defined in the documentation of
-	// the json.Marshal functions; that's why we bypass
-	// the TextMarshaler instructions if the key is a string.
+	// the json.Marshal function; that's why we bypass the
+	// TextMarshaler instructions if the key is a string.
 	bypassMarshaler := false
 	if isString(kt) {
 		bypassMarshaler = true
@@ -1154,7 +1202,7 @@ func encodeUnsortedMap(it reflect2.MapIterator, w Writer, es *encodeState,
 
 func isSpecialType(t reflect.Type) bool {
 	// Keep in sync with types handled by specialTypeInstr.
-	return t == timeType || t == durationType || t == numberType
+	return t == timeTimeType || t == timeDurationType || t == jsonNumberType
 }
 
 func isBasicType(t reflect.Type) bool {

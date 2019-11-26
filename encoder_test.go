@@ -2,6 +2,7 @@ package jettison
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding"
 	"encoding/json"
@@ -297,21 +298,21 @@ func TestMap(t *testing.T) {
 }
 
 type (
-	mapKeyString           string
-	mapKeyInteger          int64
-	mapKeyMarshaler        struct{}
-	mapKeyStringMarshaler  string
-	mapKeyIntegerMarshaler uint64
+	mapKeyString             string
+	mapKeyInteger            int64
+	mapKeyStringMarshaler    string
+	mapKeyIntegerMarshaler   uint64
+	mapKeyCompositeMarshaler struct{}
 )
 
-func (mapKeyMarshaler) MarshalText() ([]byte, error) {
-	return []byte("loreum"), nil
-}
 func (mapKeyStringMarshaler) MarshalText() ([]byte, error) {
 	return []byte("ipsum"), nil
 }
 func (mapKeyIntegerMarshaler) MarshalText() ([]byte, error) {
 	return []byte("dolor"), nil
+}
+func (mapKeyCompositeMarshaler) MarshalText() ([]byte, error) {
+	return []byte("loreum"), nil
 }
 
 // TestMapKeyPrecedence tests that the precedence order
@@ -324,7 +325,7 @@ func TestMapKeyPrecedence(t *testing.T) {
 	testdata := []interface{}{
 		map[mapKeyString]string{"loreum": "ipsum"},
 		map[mapKeyInteger]string{1: "loreum"},
-		map[mapKeyMarshaler]string{{}: "ipsum"},
+		map[mapKeyCompositeMarshaler]string{{}: "ipsum"},
 		map[mapKeyStringMarshaler]string{mapKeyStringMarshaler("xxx"): "loreum"},
 		map[mapKeyIntegerMarshaler]string{mapKeyIntegerMarshaler(42): "ipsum"},
 	}
@@ -424,23 +425,23 @@ func TestCompositeMapValue(t *testing.T) {
 }
 
 type (
-	valTextMarshaler int
-	refTextMarshaler int
-	valJSONMarshaler string
-	refJSONMarshaler string
+	basicValTextMarshaler int
+	basicRefTextMarshaler int
+	basicValJSONMarshaler string
+	basicRefJSONMarshaler string
 )
 
-func (im valTextMarshaler) MarshalText() ([]byte, error) {
-	return []byte(strconv.Itoa(int(im))), nil
+func (m basicValTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(int(m))), nil
 }
-func (im *refTextMarshaler) MarshalText() ([]byte, error) {
-	return []byte(strconv.Itoa(int(*im))), nil
+func (m *basicRefTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(int(*m))), nil
 }
-func (sm valJSONMarshaler) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(string(sm))), nil
+func (m basicValJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(m))), nil
 }
-func (sm *refJSONMarshaler) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(string(*sm))), nil
+func (m *basicRefJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(*m))), nil
 }
 
 type (
@@ -460,11 +461,11 @@ func (m *compositeRefTextMarshaler) MarshalText() ([]byte, error) {
 // can be encoded.
 func TestTextMarshalerMapKey(t *testing.T) {
 	var (
-		im  valTextMarshaler = 42
-		ipm refTextMarshaler = 84
-		sm                   = compositeValTextMarshaler{L: "A", R: "B"}
-		spm                  = compositeRefTextMarshaler{L: "A", R: "B"}
-		ip                   = &net.IP{127, 0, 0, 1}
+		bval basicValTextMarshaler = 42
+		bref basicRefTextMarshaler = 84
+		cval                       = compositeValTextMarshaler{L: "A", R: "B"}
+		cref                       = compositeRefTextMarshaler{L: "A", R: "B"}
+		ip                         = &net.IP{127, 0, 0, 1}
 	)
 	valid := []interface{}{
 		map[time.Time]string{
@@ -479,23 +480,23 @@ func TestTextMarshalerMapKey(t *testing.T) {
 			// the results cannot be compared.
 			// nil: "",
 		},
-		map[compositeValTextMarshaler]string{sm: "ab"},
+		map[compositeValTextMarshaler]string{cval: "ab"},
 		map[*compositeValTextMarshaler]string{
-			&sm: "ab",
+			&cval: "ab",
 			// nil: "",
 		},
 		map[*compositeRefTextMarshaler]string{
-			&spm: "ab",
+			&cref: "ab",
 			// nil: "",
 		},
-		map[valTextMarshaler]string{im: "42"},
-		map[*valTextMarshaler]string{
-			&im: "42",
+		map[basicValTextMarshaler]string{bval: "42"},
+		map[*basicValTextMarshaler]string{
+			&bval: "42",
 			// nil: "",
 		},
-		map[refTextMarshaler]string{ipm: "42"},
-		map[*refTextMarshaler]string{
-			&ipm: "42",
+		map[basicRefTextMarshaler]string{bref: "42"},
+		map[*basicRefTextMarshaler]string{
+			&bref: "42",
 			// nil: "",
 		},
 	}
@@ -1395,28 +1396,28 @@ func TestJSONMarshaler(t *testing.T) {
 	// I = Pointer receiver of composite type.
 	// P = Pointer receiver of basic type.
 	type x struct {
-		T1 time.Time         `json:"t1"`
-		T2 time.Time         `json:"t2,omitempty"`
-		T3 *time.Time        `json:"t3"`
-		T4 *time.Time        `json:"t4"`           // nil
-		T5 *time.Time        `json:"t5,omitempty"` // nil
-		S1 valJSONMarshaler  `json:"s1,omitempty"`
-		S2 valJSONMarshaler  `json:"s2,omitempty"`
-		S3 valJSONMarshaler  `json:"s3"`
-		S4 *valJSONMarshaler `json:"s4"`
-		S5 *valJSONMarshaler `json:"s5"`           // nil
-		S6 *valJSONMarshaler `json:"s6,omitempty"` // nil
-		I1 big.Int           `json:"i1"`
-		I2 big.Int           `json:"i2,omitempty"`
-		I3 *big.Int          `json:"i3"`
-		I4 *big.Int          `json:"i4"`           // nil
-		I5 *big.Int          `json:"i5,omitempty"` // nil
-		P1 refJSONMarshaler  `json:"p1,omitempty"`
-		P2 refJSONMarshaler  `json:"p2,omitempty"`
-		P3 refJSONMarshaler  `json:"p3"`
-		P4 *refJSONMarshaler `json:"p4"`
-		P5 *refJSONMarshaler `json:"p5"`           // nil
-		P6 *refJSONMarshaler `json:"p6,omitempty"` // nil
+		T1 time.Time              `json:"t1"`
+		T2 time.Time              `json:"t2,omitempty"`
+		T3 *time.Time             `json:"t3"`
+		T4 *time.Time             `json:"t4"`           // nil
+		T5 *time.Time             `json:"t5,omitempty"` // nil
+		S1 basicValJSONMarshaler  `json:"s1,omitempty"`
+		S2 basicValJSONMarshaler  `json:"s2,omitempty"`
+		S3 basicValJSONMarshaler  `json:"s3"`
+		S4 *basicValJSONMarshaler `json:"s4"`
+		S5 *basicValJSONMarshaler `json:"s5"`           // nil
+		S6 *basicValJSONMarshaler `json:"s6,omitempty"` // nil
+		I1 big.Int                `json:"i1"`
+		I2 big.Int                `json:"i2,omitempty"`
+		I3 *big.Int               `json:"i3"`
+		I4 *big.Int               `json:"i4"`           // nil
+		I5 *big.Int               `json:"i5,omitempty"` // nil
+		P1 basicRefJSONMarshaler  `json:"p1,omitempty"`
+		P2 basicRefJSONMarshaler  `json:"p2,omitempty"`
+		P3 basicRefJSONMarshaler  `json:"p3"`
+		P4 *basicRefJSONMarshaler `json:"p4"`
+		P5 *basicRefJSONMarshaler `json:"p5"`           // nil
+		P6 *basicRefJSONMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {
@@ -1424,18 +1425,18 @@ func TestJSONMarshaler(t *testing.T) {
 	}
 	var (
 		now = time.Now()
-		sm  = valJSONMarshaler("Loreum")
-		spm = refJSONMarshaler("Loreum")
+		val = basicValJSONMarshaler("Loreum")
+		ref = basicRefJSONMarshaler("Loreum")
 	)
 	xx := x{
 		T1: now,
 		T3: &now,
 		S1: "Loreum",
-		S4: &sm,
+		S4: &val,
 		I1: *big.NewInt(math.MaxInt64),
 		I3: big.NewInt(math.MaxInt64),
 		P1: "Loreum",
-		P4: &spm,
+		P4: &ref,
 	}
 	testdata := []struct {
 		name string
@@ -1467,46 +1468,46 @@ func TestTextMarshaler(t *testing.T) {
 	// F = Pointer receiver of composite kind.
 	// P = Pointer receiver of basic type.
 	type x struct {
-		S1 net.IP            `json:"s1"`
-		S2 net.IP            `json:"s2,omitempty"`
-		S3 *net.IP           `json:"s3"`
-		S4 *net.IP           `json:"s4"`           // nil
-		S5 *net.IP           `json:"s5,omitempty"` // nil
-		I1 valTextMarshaler  `json:"i1,omitempty"`
-		I2 valTextMarshaler  `json:"i2,omitempty"`
-		I3 valTextMarshaler  `json:"i3"`
-		I4 *valTextMarshaler `json:"i4"`
-		I5 *valTextMarshaler `json:"i5"`           // nil
-		I6 *valTextMarshaler `json:"i6,omitempty"` // nil
-		F1 big.Float         `json:"f1"`
-		F2 big.Float         `json:"f2,omitempty"`
-		F3 *big.Float        `json:"f3"`
-		F4 *big.Float        `json:"f4"`           // nil
-		F5 *big.Float        `json:"f5,omitempty"` // nil
-		P1 refTextMarshaler  `json:"p1,omitempty"`
-		P2 refTextMarshaler  `json:"p2,omitempty"`
-		P3 refTextMarshaler  `json:"p3"`
-		P4 *refTextMarshaler `json:"p4"`
-		P5 *refTextMarshaler `json:"p5"`           // nil
-		P6 *refTextMarshaler `json:"p6,omitempty"` // nil
+		S1 net.IP                 `json:"s1"`
+		S2 net.IP                 `json:"s2,omitempty"`
+		S3 *net.IP                `json:"s3"`
+		S4 *net.IP                `json:"s4"`           // nil
+		S5 *net.IP                `json:"s5,omitempty"` // nil
+		I1 basicValTextMarshaler  `json:"i1,omitempty"`
+		I2 basicValTextMarshaler  `json:"i2,omitempty"`
+		I3 basicValTextMarshaler  `json:"i3"`
+		I4 *basicValTextMarshaler `json:"i4"`
+		I5 *basicValTextMarshaler `json:"i5"`           // nil
+		I6 *basicValTextMarshaler `json:"i6,omitempty"` // nil
+		F1 big.Float              `json:"f1"`
+		F2 big.Float              `json:"f2,omitempty"`
+		F3 *big.Float             `json:"f3"`
+		F4 *big.Float             `json:"f4"`           // nil
+		F5 *big.Float             `json:"f5,omitempty"` // nil
+		P1 basicRefTextMarshaler  `json:"p1,omitempty"`
+		P2 basicRefTextMarshaler  `json:"p2,omitempty"`
+		P3 basicRefTextMarshaler  `json:"p3"`
+		P4 *basicRefTextMarshaler `json:"p4"`
+		P5 *basicRefTextMarshaler `json:"p5"`           // nil
+		P6 *basicRefTextMarshaler `json:"p6,omitempty"` // nil
 	}
 	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var (
-		im  = valTextMarshaler(42)
-		ipm = refTextMarshaler(42)
+		val = basicValTextMarshaler(42)
+		ref = basicRefTextMarshaler(42)
 	)
 	xx := x{
 		S1: net.IP{192, 168, 0, 1},
 		S3: &net.IP{127, 0, 0, 1},
 		I1: 42,
-		I4: &im,
+		I4: &val,
 		F1: *big.NewFloat(math.MaxFloat64),
 		F3: big.NewFloat(math.MaxFloat64),
 		P1: 42,
-		P4: &ipm,
+		P4: &ref,
 	}
 	testdata := []struct {
 		name string
@@ -1533,53 +1534,74 @@ type (
 	nilJSONMarshaler string
 	nilTextMarshaler string
 	nilMarshaler     string
+	nilMarshalerCtx  string
 )
 
-func (nm *nilJSONMarshaler) MarshalJSON() ([]byte, error) {
-	if nm == nil {
+func (m *nilJSONMarshaler) MarshalJSON() ([]byte, error) {
+	if m == nil {
 		return []byte(strconv.Quote("Loreum")), nil
 	}
 	return nil, nil
 }
-
-func (nm *nilTextMarshaler) MarshalText() ([]byte, error) {
-	if nm == nil {
+func (m *nilTextMarshaler) MarshalText() ([]byte, error) {
+	if m == nil {
 		return []byte("Loreum"), nil
 	}
 	return nil, nil
 }
-
-func (nm *nilMarshaler) WriteJSON(w Writer) error {
-	if nm == nil {
+func (m *nilMarshaler) WriteJSON(w Writer) error {
+	if m == nil {
 		_, err := w.WriteString(`"Loreum"`)
 		return err
 	}
 	return nil
 }
-
-func (nm *nilMarshaler) MarshalJSON() ([]byte, error) {
-	if nm == nil {
+func (m *nilMarshaler) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte(strconv.Quote("Loreum")), nil
+	}
+	return nil, nil
+}
+func (m *nilMarshalerCtx) WriteJSONContext(_ context.Context, w Writer) error {
+	if m == nil {
+		_, err := w.WriteString(`"Loreum"`)
+		return err
+	}
+	return nil
+}
+func (m *nilMarshalerCtx) MarshalJSON() ([]byte, error) {
+	if m == nil {
 		return []byte(strconv.Quote("Loreum")), nil
 	}
 	return nil, nil
 }
 
-// bothMarshaler combines the json.Marshaler and
-// the Marshaler interfaces so that the tests output
-// can be compared against encoding/json.
+// bothMarshaler combines the json.Marshaler
+// and Marshaler interfaces so that tests outputs
+// can be compared.
 type bothMarshaler interface {
 	Marshaler
 	json.Marshaler
 }
 
+// bothMarshalerCtx combines the json.Marshaler
+// and MarshalerCtx interfaces so that tests outputs
+// can be compared.
+type bothMarshalerCtx interface {
+	MarshalerCtx
+	json.Marshaler
+}
+
 // TestNilMarshaler tests that even if a nil interface
-// value is passed in, as long as it implements MarshalJSON,
+// value is passed in, as long as it implements one of
+// the MarshalJSON, MarshalText or WriteJSON methods
 // it should be marshaled.
 //nolint:godox
 func TestNilMarshaler(t *testing.T) {
 	testdata := []struct {
 		v interface{}
 	}{
+		// json.Marshaler
 		{v: struct{ M json.Marshaler }{M: nil}},
 		{v: struct{ M json.Marshaler }{(*nilJSONMarshaler)(nil)}},
 		{v: struct{ M interface{} }{(*nilJSONMarshaler)(nil)}},
@@ -1587,6 +1609,7 @@ func TestNilMarshaler(t *testing.T) {
 		{v: json.Marshaler((*nilJSONMarshaler)(nil))},
 		{v: (*nilJSONMarshaler)(nil)},
 
+		// encoding.TextMarshaler
 		// FIXME: Panic with encoding/json.
 		// {v: struct{ M encoding.TextMarshaler }{M: nil}},
 
@@ -1596,12 +1619,21 @@ func TestNilMarshaler(t *testing.T) {
 		{v: encoding.TextMarshaler((*nilTextMarshaler)(nil))},
 		{v: (*nilTextMarshaler)(nil)},
 
+		// jettison.Marshaler
 		{v: struct{ M bothMarshaler }{M: nil}},
 		{v: struct{ M bothMarshaler }{(*nilMarshaler)(nil)}},
 		{v: struct{ M interface{} }{(*nilMarshaler)(nil)}},
 		{v: struct{ M *nilMarshaler }{M: nil}},
 		{v: bothMarshaler((*nilMarshaler)(nil))},
 		{v: (*nilMarshaler)(nil)},
+
+		// jettison.MarshalerCtx
+		{v: struct{ M bothMarshalerCtx }{M: nil}},
+		{v: struct{ M bothMarshalerCtx }{(*nilMarshalerCtx)(nil)}},
+		{v: struct{ M interface{} }{(*nilMarshalerCtx)(nil)}},
+		{v: struct{ M *nilMarshalerCtx }{M: nil}},
+		{v: bothMarshalerCtx((*nilMarshalerCtx)(nil))},
+		{v: (*nilMarshalerCtx)(nil)},
 	}
 	for _, tt := range testdata {
 		enc, err := NewEncoder(reflect.TypeOf(tt.v))
@@ -1627,6 +1659,8 @@ type (
 	errorRefTextMarshaler struct{}
 	errorMarshaler        struct{}
 	errorRefMarshaler     struct{}
+	errorMarshalerCtx     struct{}
+	errorRefMarshalerCtx  struct{}
 )
 
 func (errorJSONMarshaler) MarshalJSON() ([]byte, error)     { return nil, errMarshaler }
@@ -1638,9 +1672,12 @@ func (*errorRefTextMarshaler) MarshalText() ([]byte, error) { return nil, errMar
 func (errorMarshaler) WriteJSON(_ Writer) error     { return errMarshaler }
 func (*errorRefMarshaler) WriteJSON(_ Writer) error { return errMarshaler }
 
+func (errorMarshalerCtx) WriteJSONContext(_ context.Context, _ Writer) error     { return errMarshaler }
+func (*errorRefMarshalerCtx) WriteJSONContext(_ context.Context, _ Writer) error { return errMarshaler }
+
 // TestMarshalerError tests that a MarshalerError
-// is returned when a MarshalText or a MarshalJSON
-// method returns an error.
+// is returned when a MarshalText, MarshalJSON or
+// WriteJSON  method returns an error.
 func TestMarshalerError(t *testing.T) {
 	for _, tt := range []interface{}{
 		errorJSONMarshaler{},
@@ -1649,6 +1686,8 @@ func TestMarshalerError(t *testing.T) {
 		&errorRefTextMarshaler{},
 		errorMarshaler{},
 		&errorRefMarshaler{},
+		errorMarshalerCtx{},
+		&errorRefMarshalerCtx{},
 	} {
 		enc, err := NewEncoder(reflect.TypeOf(tt))
 		if err != nil {
@@ -1684,19 +1723,19 @@ type (
 	compositeRefMarshaler struct{}
 )
 
-func (wm basicValMarshaler) WriteJSON(w Writer) error {
-	_, err := w.WriteString(strconv.Quote(string(wm)))
+func (m basicValMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(m)))
 	return err
 }
-func (wm basicValMarshaler) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(string(wm))), nil
+func (m basicValMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(m))), nil
 }
-func (wm *basicRefMarshaler) WriteJSON(w Writer) error {
-	_, err := w.WriteString(strconv.Quote(string(*wm)))
+func (m *basicRefMarshaler) WriteJSON(w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(*m)))
 	return err
 }
-func (wm *basicRefMarshaler) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(string(*wm))), nil
+func (m *basicRefMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(*m))), nil
 }
 func (compositeValMarshaler) WriteJSON(w Writer) error {
 	_, err := w.WriteString(`"Loreum"`)
@@ -1713,6 +1752,7 @@ func (*compositeRefMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(`"Loreum"`), nil
 }
 
+//nolint:dupl
 func TestMarshaler(t *testing.T) {
 	// S = Non-pointer receiver of composite type.
 	// I = Non-pointer receiver of basic type.
@@ -1747,18 +1787,18 @@ func TestMarshaler(t *testing.T) {
 		t.Fatal(err)
 	}
 	var (
-		swm  = basicValMarshaler("Loreun")
-		spwm = basicRefMarshaler("Ipsum")
+		val = basicValMarshaler("Loreun")
+		ref = basicRefMarshaler("Ipsum")
 	)
 	xx := x{
 		S1: compositeValMarshaler{},
 		S3: &compositeValMarshaler{},
 		I1: "Loreun",
-		I4: &swm,
+		I4: &val,
 		F1: compositeRefMarshaler{},
 		F3: &compositeRefMarshaler{},
 		P1: "Ipsum",
-		P4: &spwm,
+		P4: &ref,
 	}
 	testdata := []struct {
 		name string
@@ -1781,6 +1821,156 @@ func TestMarshaler(t *testing.T) {
 	}
 }
 
+type (
+	basicValMarshalerCtx     string
+	basicRefMarshalerCtx     string
+	compositeValMarshalerCtx struct{}
+	compositeRefMarshalerCtx struct{}
+)
+
+func (m basicValMarshalerCtx) WriteJSONContext(_ context.Context, w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(m)))
+	return err
+}
+func (m basicValMarshalerCtx) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(m))), nil
+}
+func (m *basicRefMarshalerCtx) WriteJSONContext(_ context.Context, w Writer) error {
+	_, err := w.WriteString(strconv.Quote(string(*m)))
+	return err
+}
+func (m *basicRefMarshalerCtx) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(string(*m))), nil
+}
+func (compositeValMarshalerCtx) WriteJSONContext(_ context.Context, w Writer) error {
+	_, err := w.WriteString(`"Loreum"`)
+	return err
+}
+func (compositeValMarshalerCtx) MarshalJSON() ([]byte, error) {
+	return []byte(`"Loreum"`), nil
+}
+func (*compositeRefMarshalerCtx) WriteJSONContext(_ context.Context, w Writer) error {
+	_, err := w.WriteString(`"Loreum"`)
+	return err
+}
+func (*compositeRefMarshalerCtx) MarshalJSON() ([]byte, error) {
+	return []byte(`"Loreum"`), nil
+}
+
+//nolint:dupl
+func TestMarshalerCtx(t *testing.T) {
+	// S = Non-pointer receiver of composite type.
+	// I = Non-pointer receiver of basic type.
+	// F = Pointer receiver of composite kind.
+	// P = Pointer receiver of basic type.
+	type x struct {
+		S1 compositeValMarshalerCtx  `json:"s1"`
+		S2 compositeValMarshalerCtx  `json:"s2,omitempty"`
+		S3 *compositeValMarshalerCtx `json:"s3"`
+		S4 *compositeValMarshalerCtx `json:"s4"`           // nil
+		S5 *compositeValMarshalerCtx `json:"s5,omitempty"` // nil
+		I1 basicValMarshalerCtx      `json:"i1,omitempty"`
+		I2 basicValMarshalerCtx      `json:"i2,omitempty"`
+		I3 basicValMarshalerCtx      `json:"i3"`
+		I4 *basicValMarshalerCtx     `json:"i4"`
+		I5 *basicValMarshalerCtx     `json:"i5"`           // nil
+		I6 *basicValMarshalerCtx     `json:"i6,omitempty"` // nil
+		F1 compositeRefMarshalerCtx  `json:"f1"`
+		F2 compositeRefMarshalerCtx  `json:"f2,omitempty"`
+		F3 *compositeRefMarshalerCtx `json:"f3"`
+		F4 *compositeRefMarshalerCtx `json:"f4"`           // nil
+		F5 *compositeRefMarshalerCtx `json:"f5,omitempty"` // nil
+		P1 basicRefMarshalerCtx      `json:"p1,omitempty"`
+		P2 basicRefMarshalerCtx      `json:"p2,omitempty"`
+		P3 basicRefMarshalerCtx      `json:"p3"`
+		P4 *basicRefMarshalerCtx     `json:"p4"`
+		P5 *basicRefMarshalerCtx     `json:"p5"`           // nil
+		P6 *basicRefMarshalerCtx     `json:"p6,omitempty"` // nil
+	}
+	enc, err := NewEncoder(reflect.TypeOf((*x)(nil)).Elem())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		val = basicValMarshalerCtx("Loreun")
+		ref = basicRefMarshalerCtx("Ipsum")
+	)
+	xx := x{
+		S1: compositeValMarshalerCtx{},
+		S3: &compositeValMarshalerCtx{},
+		I1: "Loreun",
+		I4: &val,
+		F1: compositeRefMarshalerCtx{},
+		F3: &compositeRefMarshalerCtx{},
+		P1: "Ipsum",
+		P4: &ref,
+	}
+	testdata := []struct {
+		name string
+		val  interface{}
+	}{
+		{"non-pointer", xx},
+		{"pointer", &xx},
+	}
+	for _, tt := range testdata {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := enc.Encode(tt.val, &buf); err != nil {
+				t.Error(err)
+			}
+			if !equalStdLib(t, tt.val, buf.Bytes()) {
+				t.Error("expected outputs to be equal")
+			}
+		})
+	}
+}
+
+type (
+	secret     string
+	contextKey string
+)
+
+const (
+	ctxKeyObfuscate = contextKey("_obfuscate_")
+	obfuscatedStr   = "**__SECRET__**"
+)
+
+func (s secret) WriteJSONContext(ctx context.Context, w Writer) error {
+	out := string(s)
+	if v := ctx.Value(ctxKeyObfuscate); v != nil {
+		if hide, ok := v.(bool); ok && hide {
+			out = obfuscatedStr
+		}
+	}
+	_, err := w.WriteString(out)
+	return err
+}
+
+func TestMarshalerWithContext(t *testing.T) {
+	sec := secret("v3ryS3nSitiv3P4ssWord")
+	enc, err := NewEncoder(reflect.TypeOf(sec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := enc.Encode(sec, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if s := buf.String(); s != string(sec) {
+		t.Errorf("got %s, want %s", s, string(sec))
+	}
+	buf.Reset()
+
+	ctx := context.WithValue(context.Background(), ctxKeyObfuscate, true)
+	if err := enc.Encode(sec, &buf, WithContext(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	if s := buf.String(); s != obfuscatedStr {
+		t.Errorf("got %s, want %s", s, obfuscatedStr)
+	}
+}
+
 // TestTime tests that a time.Time type can be
 // encoded as a string with various layouts and
 // as an integer representing a Unix timestamp.
@@ -1791,7 +1981,7 @@ func TestTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := NewEncoder(timeType)
+	enc, err := NewEncoder(timeTimeType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1843,7 +2033,7 @@ func TestDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := NewEncoder(durationType)
+	enc, err := NewEncoder(timeDurationType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2410,7 +2600,7 @@ func TestJSONNumber(t *testing.T) {
 		{json.Number("invalid"), "", false},
 	}
 	for _, tt := range testdata {
-		enc, err := NewEncoder(numberType)
+		enc, err := NewEncoder(jsonNumberType)
 		if err != nil {
 			t.Error(err)
 		}
@@ -2524,6 +2714,37 @@ func TestFieldsWhitelist(t *testing.T) {
 		if v, ok := m[r.Key]; !ok || v != r.Val {
 			t.Errorf("expected to found key %#q with value %#q", r.Key, r.Val)
 		}
+	}
+}
+
+// TestResetEncodeState tests that the reset method
+// of encodeState resets the fields and options to
+// their default value.
+func TestResetEncodeState(t *testing.T) {
+	s := newState()
+
+	s.firstField = true
+	s.depthLevel = 42
+	s.opts.ctx = context.Background()
+	s.opts.timeLayout = time.Kitchen
+	s.opts.fieldsWhitelist = map[string]struct{}{}
+
+	s.reset()
+
+	if s.firstField != false {
+		t.Errorf("firstField: got %v, want false", s.firstField)
+	}
+	if s.depthLevel != 0 {
+		t.Errorf("depthLevel: got %v, want 0", s.depthLevel)
+	}
+	if s.opts.ctx != todoCtx {
+		t.Errorf("ctx: got %v, want %v", s.opts.ctx, todoCtx)
+	}
+	if s.opts.timeLayout != defaultTimeLayout {
+		t.Errorf("timeLayout: got %v, want %v", s.opts.timeLayout, defaultTimeLayout)
+	}
+	if s.opts.fieldsWhitelist != nil {
+		t.Errorf("fieldsWhitelist: got %v, want nil", s.opts.fieldsWhitelist)
 	}
 }
 
