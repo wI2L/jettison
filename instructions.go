@@ -378,6 +378,7 @@ func specialTypeInstr(t reflect.Type) Instruction {
 // basicTypeInstr returns the instruction associated
 // with the basic type that has the given kind.
 func basicTypeInstr(k reflect.Kind) Instruction {
+	// Keep in sync with isBasicType.
 	switch k {
 	case reflect.String:
 		return stringInstr
@@ -604,7 +605,7 @@ func integerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) e
 	case reflect.Int64:
 		i = *(*int64)(p)
 	default:
-		return fmt.Errorf("invalid integer kind: %s", k)
+		return fmt.Errorf("invalid kind: %s", k)
 	}
 	b := strconv.AppendInt(es.scratch[:0], i, 10)
 	_, err := w.Write(b)
@@ -632,7 +633,7 @@ func unsignedIntegerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect
 	case reflect.Uintptr:
 		i = uint64(*(*uintptr)(p))
 	default:
-		return fmt.Errorf("invalid unsigned integer kind: %s", k)
+		return fmt.Errorf("invalid kind: %s", k)
 	}
 	b := strconv.AppendUint(es.scratch[:0], i, 10)
 	_, err := w.Write(b)
@@ -654,7 +655,7 @@ func floatInstr(p unsafe.Pointer, w Writer, es *encodeState, bitSize int) error 
 	case 64:
 		f = *(*float64)(p)
 	default:
-		return fmt.Errorf("invalid float bit size: %d", bitSize)
+		return fmt.Errorf("invalid bit size: %d", bitSize)
 	}
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		return &UnsupportedValueError{strconv.FormatFloat(f, 'g', -1, bitSize)}
@@ -761,7 +762,7 @@ func numberInstr(p unsafe.Pointer, w Writer, _ *encodeState) error {
 	// avoid a useless conversion.
 	n := *(*string)(p)
 	if !isValidNumber(n) {
-		return fmt.Errorf("invalid number literal %q", n)
+		return fmt.Errorf("invalid number literal: %q", n)
 	}
 	_, err := w.WriteString(n)
 	return err
@@ -1201,11 +1202,12 @@ func encodeUnsortedMap(it reflect2.MapIterator, w Writer, es *encodeState,
 }
 
 func isSpecialType(t reflect.Type) bool {
-	// Keep in sync with types handled by specialTypeInstr.
+	// Keep in sync with specialTypeInstr.
 	return t == timeTimeType || t == timeDurationType || t == jsonNumberType
 }
 
 func isBasicType(t reflect.Type) bool {
+	// Keep in sync with basicTypeInstr.
 	return isInteger(t) || isFloatingPoint(t) || isString(t) || isBoolean(t)
 }
 

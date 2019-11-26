@@ -127,7 +127,7 @@ Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are 
 
 - **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
 - **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
-- **UnixTimestamp** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since Januaray 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
+- **UnixTimestamp** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since January 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
 - **UnsortedMap** • Disables map keys sort. See [Map](#map) benchmark for performance difference.
 - **ByteArrayAsString** • Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
 - **RawByteSlice** • Disables the *base64* default encoding used for byte slices.
@@ -224,23 +224,23 @@ Map/jettison/sort-4                 6.00 ± 0%
 Map/jettison/nosort-4               2.00 ± 0%
 </pre></details>
 
-#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L44)]
+#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L45)]
 
 Basic payload with fields of type `string`, `int` and `bool`.
 
 <img src="images/simple-payload.png" alt="Simple Payload Benchmark Graph">
 
-#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L113)]
+#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L114)]
 
 Large payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types.
 
 <img src="images/complex-payload.png" alt="Complex Payload Benchmark Graph">
 
-#### Interface [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L209)]
+#### Interface [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L210)]
 
 <img src="images/interface.png" alt="Interface Benchmark Graph">
 
-#### Map [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L255)]
+#### Map [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L253)]
 
 Compares Go map marshaling performances, with and without keys sort.
 

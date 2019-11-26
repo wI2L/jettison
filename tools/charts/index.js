@@ -22,8 +22,8 @@ prog.parse(process.argv)
 
 // createChart creates and exports a Google Bar Chart
 // as a PNG image, using the decamelized form of name
-// with '-' as seperator. The parameter data must be a
-// two-dimentional array where each row represents a
+// with '-' as separator. The parameter data must be a
+// two-dimensional array where each row represents a
 // bar in the chart.
 function createBarChart (dom, name, data, opts) {
     // Add an event listener to draw the chart once

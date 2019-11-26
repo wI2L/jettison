@@ -2062,7 +2062,7 @@ func TestDuration(t *testing.T) {
 }
 
 func TestAppendDuration(t *testing.T) {
-	// Taken from https://golang.org/src/time/time_test.go.
+	// Taken from https://golang.org/src/time/time_test.go
 	var testdata = []struct {
 		str string
 		dur time.Duration
@@ -2260,7 +2260,7 @@ var badFloatREs = []*regexp.Regexp{
 }
 
 func TestEncodeFloat(t *testing.T) {
-	// Taken from https://golang.org/src/encoding/json/encode_test.go.
+	// Taken from https://golang.org/src/encoding/json/encode_test.go
 	t.Parallel()
 
 	nfail := 0
