@@ -2,8 +2,7 @@ package jettison
 
 import "context"
 
-// Option overrides a particular behavior
-// of an encoder
+// Option overrides an encoder's behavior.
 type Option func(*encodeOpts)
 
 // DurationFmt represents the format used
@@ -36,6 +35,17 @@ func (df DurationFmt) String() string {
 func TimeLayout(layout string) Option {
 	return func(o *encodeOpts) {
 		o.timeLayout = layout
+	}
+}
+
+// IntegerBase sets the base used to encode signed
+// and unsigned integers, where 2 <= base <= 36.
+// When the base is greater than 10, integers are
+// encoded as strings, because the JSON spec does
+// not allow the characters 'a' to 'z' in numbers.
+func IntegerBase(base int) Option {
+	return func(o *encodeOpts) {
+		o.integerBase = base
 	}
 }
 

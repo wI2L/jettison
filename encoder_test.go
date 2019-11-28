@@ -162,6 +162,61 @@ func TestBasicTypes(t *testing.T) {
 	}
 }
 
+// TestIntegerWithBase tests that signed and unsigned
+// integers can be encoded with a custom base.
+func TestIntegerWithBase(t *testing.T) {
+	t.Parallel()
+
+	test := func(i int, base int, signed bool) {
+		vi := randIntBits(i, signed)
+
+		enc, err := NewEncoder(reflect.TypeOf(vi))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var buf bytes.Buffer
+		err = enc.Encode(vi, &buf, IntegerBase(base))
+		if err != nil {
+			t.Errorf("Encode(%T(%d),base:%d): %v", vi, vi, base, err)
+			return
+		}
+		out := buf.String()
+
+		var want string
+		if !signed {
+			want = strconv.FormatUint(uint64(i), base)
+		} else {
+			want = strconv.FormatInt(int64(i), base)
+		}
+		// When the base is greater than 10, the
+		// integer is encoded as a JSON string.
+		if base > 10 {
+			want = strconv.Quote(want)
+		}
+		if out != want {
+			t.Errorf("got %s, want %s", out, want)
+		}
+	}
+	for _, tt := range []struct {
+		name string
+		min  int
+		max  int
+	}{
+		{"signed", math.MinInt8, math.MaxInt8},
+		{"unsigned", 0, math.MaxUint8},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			for i := tt.min; i < tt.max; i++ {
+				for base := 2; base <= 36; base++ {
+					test(i, base, tt.name == "signed")
+				}
+			}
+		})
+	}
+}
+
 // TestCompositeTypes tests that composite
 // types can be encoded.
 func TestCompositeTypes(t *testing.T) {
@@ -2748,6 +2803,27 @@ func TestResetEncodeState(t *testing.T) {
 	}
 }
 
+//nolint:staticcheck
+func TestCheckEncodeOpts(t *testing.T) {
+	enc, err := NewEncoder(reflect.TypeOf(struct{}{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	for _, opt := range []Option{
+		WithContext(nil),
+		TimeLayout(""),
+		IntegerBase(1),
+		IntegerBase(37),
+		DurationFormat(DurationFmt(-1)),
+		DurationFormat(DurationFmt(6)),
+	} {
+		if err := enc.Encode(struct{}{}, &buf, opt); err == nil {
+			t.Errorf("expected non-nil error")
+		}
+	}
+}
+
 // equalStdLib marshals i to JSON using the encoding/json
 // package and returns whether the output equals b.
 func equalStdLib(t *testing.T, i interface{}, b []byte) bool {
@@ -2759,4 +2835,38 @@ func equalStdLib(t *testing.T, i interface{}, b []byte) bool {
 	t.Logf("jettison: %s", string(b))
 
 	return bytes.Equal(sb, b)
+}
+
+func randIntBits(i int, signed bool) interface{} {
+	c := i % 5
+	if c < 0 {
+		c = -c
+	}
+	if !signed {
+		switch c {
+		case 0:
+			return uint8(i)
+		case 1:
+			return uint16(i)
+		case 2:
+			return uint32(i)
+		case 3:
+			return uint64(i)
+		case 4:
+			return uint(i)
+		}
+	}
+	switch c {
+	case 0:
+		return int8(i)
+	case 1:
+		return int16(i)
+	case 2:
+		return int32(i)
+	case 3:
+		return int64(i)
+	case 4:
+		return i
+	}
+	return i
 }

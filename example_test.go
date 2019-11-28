@@ -167,3 +167,39 @@ func ExampleWithFields() {
 	// {"Z":{"ω":42},"α":"1","β":"2","Gamma":"3","π":"4"}
 	// {"Z":{"ω":42},"β":"2","Gamma":"3","π":"4"}
 }
+
+func ExampleIntegerBase() {
+	type X struct {
+		A int32
+		B int64
+		C uint8
+		D uint16
+		E uintptr
+	}
+	x := X{
+		A: -4242,
+		B: -424242,
+		C: 42,
+		D: 4242,
+		E: 0x42,
+	}
+	enc, err := jettison.NewEncoder(reflect.TypeOf(x))
+	if err != nil {
+		log.Fatal(err)
+	}
+	var buf bytes.Buffer
+
+	for _, base := range []int{2, 8, 10, 16, 36} {
+		buf.Reset()
+		if err := enc.Encode(&x, &buf, jettison.IntegerBase(base)); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s\n", buf.String())
+	}
+	// Output:
+	// {"A":-1000010010010,"B":-1100111100100110010,"C":101010,"D":1000010010010,"E":1000010}
+	// {"A":-10222,"B":-1474462,"C":52,"D":10222,"E":102}
+	// {"A":-4242,"B":-424242,"C":42,"D":4242,"E":66}
+	// {"A":"-1092","B":"-67932","C":"2a","D":"1092","E":"42"}
+	// {"A":"-39u","B":"-93ci","C":"16","D":"39u","E":"1u"}
+}

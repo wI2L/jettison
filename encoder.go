@@ -7,9 +7,22 @@ import (
 	"io"
 	"reflect"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/modern-go/reflect2"
+)
+
+const (
+	// defaultBase is the base used by default to encode
+	// signed and unsigned integers, unless otherwise specified.
+	defaultBase = 10
+
+	// defaultTimeLayout is the layout used by default
+	// to format a time.Time, unless otherwise specified.
+	// This is compliant with the ECMA specification and
+	// the JavaScript Date's toJSON method implementation.
+	defaultTimeLayout = time.RFC3339Nano
 )
 
 var (
@@ -70,30 +83,6 @@ type encodeState struct {
 	depthLevel int
 }
 
-func newState() *encodeState {
-	if v := statePool.Get(); v != nil {
-		s := v.(*encodeState)
-		s.reset()
-		return s
-	}
-	return &encodeState{
-		opts: encodeOpts{
-			ctx:        todoCtx,
-			timeLayout: defaultTimeLayout,
-		},
-	}
-}
-
-func (s *encodeState) reset() {
-	// The fields addressable and ptrInput
-	// are always set prior to encoding
-	// so they don't need to be reset.
-	s.firstField = false
-	s.depthLevel = 0
-
-	s.opts.reset()
-}
-
 // encodeOpts represents the runtime options
 // of an encoder. All options are opt-in and
 // have a default value that comply with the
@@ -101,6 +90,7 @@ func (s *encodeState) reset() {
 type encodeOpts struct {
 	ctx               context.Context
 	timeLayout        string
+	integerBase       int
 	durationFmt       DurationFmt
 	fieldsWhitelist   map[string]struct{}
 	useTimestamps     bool
@@ -115,14 +105,54 @@ type encodeOpts struct {
 }
 
 var zeroOpts = &encodeOpts{
-	ctx:        todoCtx,
-	timeLayout: defaultTimeLayout,
+	ctx:         todoCtx,
+	timeLayout:  defaultTimeLayout,
+	integerBase: defaultBase,
 	// The remaining fields are set
 	// to their zero-value.
 }
 
+func newState() *encodeState {
+	if v := statePool.Get(); v != nil {
+		s := v.(*encodeState)
+		s.reset()
+		return s
+	}
+	return &encodeState{opts: encodeOpts{
+		ctx:         todoCtx,
+		timeLayout:  defaultTimeLayout,
+		integerBase: defaultBase,
+	}}
+}
+
+func (s *encodeState) reset() {
+	// The fields addressable and ptrInput
+	// are always set prior to encoding
+	// so they don't need to be reset.
+	s.firstField = false
+	s.depthLevel = 0
+
+	s.opts.reset()
+}
+
 func (opts *encodeOpts) reset() {
 	*opts = *zeroOpts
+}
+
+func (opts *encodeOpts) check() error {
+	if opts.ctx == nil {
+		return fmt.Errorf("nil context")
+	}
+	if opts.timeLayout == "" {
+		return fmt.Errorf("empty time layout")
+	}
+	if opts.integerBase < 2 || opts.integerBase > 36 {
+		return fmt.Errorf("illegal base: %d", opts.integerBase)
+	}
+	if opts.durationFmt < DurationString || opts.durationFmt > DurationNanoseconds {
+		return fmt.Errorf("unknown duration format")
+	}
+	return nil
 }
 
 // UnsupportedTypeError is the error returned by
@@ -195,7 +225,7 @@ func (e *MarshalerError) Unwrap() error { return e.Err }
 // NewEncoder returns a new encoder that can marshal the
 // values of the given type. The Encoder can be explicitly
 // initialized by calling its Compile method, otherwise the
-// operation is done on first call to Marshal.
+// operation is done on first call to Encode.
 func NewEncoder(rt reflect.Type) (*Encoder, error) {
 	if rt == nil {
 		return nil, errors.New("invalid type: nil")
@@ -279,6 +309,9 @@ func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option
 		if o != nil {
 			o(&es.opts)
 		}
+	}
+	if err := es.opts.check(); err != nil {
+		return fmt.Errorf("invalid option: %v", err)
 	}
 	// Execute the instruction with the state
 	// and the given writer.

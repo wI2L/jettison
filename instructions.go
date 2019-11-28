@@ -21,12 +21,6 @@ import (
 
 const hex = "0123456789abcdef"
 
-// defaultTimeLayout is the layout used by default
-// to format a time.Time, unless otherwise specified.
-// This is compliant with the ECMA specification and
-// the JavaScript Date's toJSON method implementation.
-const defaultTimeLayout = time.RFC3339Nano
-
 var (
 	timeTimeType      = reflect.TypeOf(time.Time{})
 	timeDurationType  = reflect.TypeOf(time.Duration(0))
@@ -607,15 +601,13 @@ func integerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) e
 	default:
 		return fmt.Errorf("invalid kind: %s", k)
 	}
-	b := strconv.AppendInt(es.scratch[:0], i, 10)
-	_, err := w.Write(b)
-	return err
+	b := strconv.AppendInt(es.scratch[:0], i, es.opts.integerBase)
+	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
 }
 
 func intInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
-	b := strconv.AppendInt(es.scratch[:0], int64(*(*int)(p)), 10)
-	_, err := w.Write(b)
-	return err
+	b := strconv.AppendInt(es.scratch[:0], int64(*(*int)(p)), es.opts.integerBase)
+	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
 }
 
 //nolint:interfacer
@@ -635,15 +627,30 @@ func unsignedIntegerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect
 	default:
 		return fmt.Errorf("invalid kind: %s", k)
 	}
-	b := strconv.AppendUint(es.scratch[:0], i, 10)
-	_, err := w.Write(b)
-	return err
+	b := strconv.AppendUint(es.scratch[:0], i, es.opts.integerBase)
+	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
 }
 
 func uintInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
-	b := strconv.AppendUint(es.scratch[:0], uint64(*(*uint)(p)), 10)
-	_, err := w.Write(b)
-	return err
+	b := strconv.AppendUint(es.scratch[:0], uint64(*(*uint)(p)), es.opts.integerBase)
+	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
+}
+
+func writeIntegerBytes(w Writer, b []byte, quote bool) error {
+	if quote {
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+	}
+	if _, err := w.Write(b); err != nil {
+		return err
+	}
+	if quote {
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 //nolint:interfacer
@@ -777,14 +784,14 @@ func isValidNumber(s string) bool {
 	if s == "" {
 		return false
 	}
-	// Optional -
+	// Optional minus sign.
 	if s[0] == '-' {
 		s = s[1:]
 		if s == "" {
 			return false
 		}
 	}
-	// Digits
+	// Digits.
 	switch {
 	default:
 		return false
@@ -796,7 +803,7 @@ func isValidNumber(s string) bool {
 			s = s[1:]
 		}
 	}
-	// . followed by 1 or more digits.
+	// Dot followed by 1 or more digits.
 	if len(s) >= 2 && s[0] == '.' && '0' <= s[1] && s[1] <= '9' {
 		s = s[2:]
 		for len(s) > 0 && '0' <= s[0] && s[0] <= '9' {
