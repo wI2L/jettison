@@ -126,6 +126,7 @@ os.Stdout.Write(b)
 Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder during marshaling. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
 
 - **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
+- **IntegerBase** • Defines the radix (base number) used to encode signed and unsigned integers. The decimal base (_10_) is the default.
 - **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
 - **UnixTimestamp** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since January 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
 - **UnsortedMap** • Disables map keys sort. See [Map](#map) benchmark for performance difference.
