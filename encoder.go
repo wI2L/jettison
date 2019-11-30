@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -14,8 +15,8 @@ import (
 )
 
 const (
-	// defaultBase is the base used by default to encode
-	// signed and unsigned integers, unless otherwise specified.
+	// defaultBase is the default base used to encode
+	// signed and unsigned integers.
 	defaultBase = 10
 
 	// defaultTimeLayout is the layout used by default
@@ -25,10 +26,7 @@ const (
 	defaultTimeLayout = time.RFC3339Nano
 )
 
-var (
-	todoCtx   = context.TODO()
-	statePool = sync.Pool{}
-)
+var statePool = sync.Pool{} // *encodeState
 
 // ErrInvalidWriter is the error returned by an
 // Encoder's Encode method when the given Writer
@@ -52,9 +50,10 @@ type Instruction func(unsafe.Pointer, Writer, *encodeState) error
 // type using a set of instructions compiled when
 // the encoder is instantiated.
 type Encoder struct {
-	typ  reflect.Type
-	root Instruction
-	once sync.Once
+	typ        reflect.Type
+	root       Instruction
+	once       sync.Once
+	isCompiled int32 // atomic
 }
 
 type encodeState struct {
@@ -105,7 +104,7 @@ type encodeOpts struct {
 }
 
 var zeroOpts = &encodeOpts{
-	ctx:         todoCtx,
+	ctx:         context.TODO(),
 	timeLayout:  defaultTimeLayout,
 	integerBase: defaultBase,
 	// The remaining fields are set
@@ -119,7 +118,7 @@ func newState() *encodeState {
 		return s
 	}
 	return &encodeState{opts: encodeOpts{
-		ctx:         todoCtx,
+		ctx:         context.TODO(),
 		timeLayout:  defaultTimeLayout,
 		integerBase: defaultBase,
 	}}
@@ -194,32 +193,10 @@ func (e *TypeMismatchError) Error() string {
 	return fmt.Sprintf("incompatible value type: %v", e.SrcType)
 }
 
-type marshalerKind string
-
-const (
-	marshalerKindJSON        marshalerKind = "MarshalJSON"
-	marshalerKindText        marshalerKind = "MarshalText"
-	marshalerKindJettison    marshalerKind = "WriteJSON"
-	marshalerKindJettisonCtx marshalerKind = "WriteJSONContext"
-)
-
-// MarshalerError represents an error from calling
-// a MarshalJSON or MarshalText method.
-type MarshalerError struct {
-	Err  error
-	Typ  reflect.Type
-	kind marshalerKind
-}
-
-// Error implements the builtin error interface.
-func (e *MarshalerError) Error() string {
-	return fmt.Sprintf("error calling %s for type %s: %s", e.kind, e.Typ.String(), e.Err)
-}
-
 // Unwrap returns the wrapped error.
 // This doesn't implement a public interface, but
 // allow to use the errors.Unwrap function released
-// in Go 1.13 with a MarshalerError.
+// in Go1.13 with a MarshalerError.
 func (e *MarshalerError) Unwrap() error { return e.Err }
 
 // NewEncoder returns a new encoder that can marshal the
@@ -252,11 +229,20 @@ func (e *Encoder) Encode(i interface{}, w Writer, opts ...Option) error {
 	return e.encode(typ, i, w, opts...)
 }
 
-// Compile generates the encoder's instructions.
-// Calling this method more than once is a noop.
-func (e *Encoder) Compile() error {
-	return e.compile()
+// String implements the fmt.Stringer interface.
+func (e *Encoder) String() string {
+	return fmt.Sprintf(
+		"Type: %s - Kind: %s - Compiled: %t",
+		e.typ, e.typ.Kind(), atomic.LoadInt32(&e.isCompiled) == 1,
+	)
 }
+
+// Compile recursively generates the encoder's instructions
+// set required to encode the type for which it was created.
+// It returns an error if it encounters a type that is not
+// supported, such as channel, complex and function values.
+// Calling this method more than once is a noop.
+func (e *Encoder) Compile() error { return e.compile() }
 
 func (e *Encoder) compile() error {
 	var err error
@@ -265,8 +251,18 @@ func (e *Encoder) compile() error {
 			e.typ = e.typ.Elem()
 		}
 		err = e.build(e.typ)
+		atomic.StoreInt32(&e.isCompiled, 1)
 	})
 	return err
+}
+
+func (e *Encoder) build(t reflect.Type) error {
+	ins, err := cachedTypeInstr(t, false)
+	if err != nil {
+		return err
+	}
+	e.root = ins
+	return nil
 }
 
 func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option) error {
@@ -319,17 +315,5 @@ func (e *Encoder) encode(t reflect.Type, i interface{}, w Writer, opts ...Option
 		return err
 	}
 	statePool.Put(es)
-	return nil
-}
-
-// build generates the instructions-set required to encode
-// the given type. It returns an error if the type is not
-// supported, such as channel, complex and function values.
-func (e *Encoder) build(t reflect.Type) error {
-	ins, err := cachedTypeInstr(t)
-	if err != nil {
-		return err
-	}
-	e.root = ins
 	return nil
 }

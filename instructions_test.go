@@ -2,13 +2,34 @@ package jettison
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"testing"
 	"unsafe"
 )
+
+func TestCachedTypeInstr(t *testing.T) {
+	type Dog struct {
+		Name    string
+		Parent  *Dog
+		Sibling *Dog
+	}
+	typ := reflect.TypeOf(Dog{})
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			t.Parallel()
+			_, err := cachedTypeInstr(typ, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 // TestSpecialTypeInstr tests that specialTypeInstr
 // returns an instruction only for special types

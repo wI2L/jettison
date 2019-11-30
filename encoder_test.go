@@ -2702,11 +2702,11 @@ func TestInstrCache(t *testing.T) {
 	type x struct {
 		A string
 	}
-	i1, err := cachedTypeInstr(reflect.TypeOf(x{}))
+	i1, err := cachedTypeInstr(reflect.TypeOf(x{}), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	i2, err := cachedTypeInstr(reflect.TypeOf(x{}))
+	i2, err := cachedTypeInstr(reflect.TypeOf(x{}), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2792,8 +2792,8 @@ func TestResetEncodeState(t *testing.T) {
 	if s.depthLevel != 0 {
 		t.Errorf("depthLevel: got %v, want 0", s.depthLevel)
 	}
-	if s.opts.ctx != todoCtx {
-		t.Errorf("ctx: got %v, want %v", s.opts.ctx, todoCtx)
+	if s.opts.ctx != context.TODO() {
+		t.Errorf("ctx: got %v, want %v", s.opts.ctx, context.TODO())
 	}
 	if s.opts.timeLayout != defaultTimeLayout {
 		t.Errorf("timeLayout: got %v, want %v", s.opts.timeLayout, defaultTimeLayout)

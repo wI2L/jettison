@@ -39,9 +39,9 @@ var bpool = sync.Pool{
 	},
 }
 
-// cachedTypeInstr is the same as typeInstr, but
+// cachedTypeInstr is the same as newTypeInstr, but
 // uses a cache to avoid duplicate instructions.
-func cachedTypeInstr(t reflect.Type) (Instruction, error) {
+func cachedTypeInstr(t reflect.Type, slow bool) (Instruction, error) {
 	if instr, ok := instrCache.Load(t); ok {
 		return instr.(Instruction), nil
 	}
@@ -56,6 +56,11 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 		err error
 		ins Instruction
 	)
+	if slow {
+		// Only used during testing to stack calls
+		// before LoadAndStore.
+		time.Sleep(25 * time.Millisecond)
+	}
 	wg.Add(1)
 	i, ok := instrCache.LoadOrStore(t,
 		Instruction(func(p unsafe.Pointer, w Writer, es *encodeState) error {
@@ -84,8 +89,6 @@ func cachedTypeInstr(t reflect.Type) (Instruction, error) {
 }
 
 // newTypeInstr returns the instruction to encode t.
-// It creates a new Encoder instance to encode some
-// composite types, such as struct and map.
 func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, error) {
 	if skipSpecialAndMarshalers {
 		goto skip
@@ -122,7 +125,7 @@ skip:
 		return interfaceInstr, nil
 	case reflect.Ptr:
 		et := t.Elem()
-		einstr, err := cachedTypeInstr(et)
+		einstr, err := cachedTypeInstr(et, false)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +197,7 @@ func newMarshalerInstr(t reflect.Type) Instruction {
 			return err
 		}
 		if err := m.WriteJSON(w); err != nil {
-			return &MarshalerError{err, t, marshalerKindJettison}
+			return &MarshalerError{err, t, marshalerFuncJettison}
 		}
 		return nil
 	}
@@ -214,7 +217,7 @@ func newAddrMarshalerInstr(t reflect.Type) Instruction {
 		v := reflect.NewAt(t, p)
 		m := v.Interface().(Marshaler)
 		if err := m.WriteJSON(w); err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJettison}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerFuncJettison}
 		}
 		return nil
 	}
@@ -233,7 +236,7 @@ func newMarshalerCtxInstr(t reflect.Type) Instruction {
 			return err
 		}
 		if err := m.WriteJSONContext(es.opts.ctx, w); err != nil {
-			return &MarshalerError{err, t, marshalerKindJettisonCtx}
+			return &MarshalerError{err, t, marshalerFuncJettisonCtx}
 		}
 		return nil
 	}
@@ -253,7 +256,7 @@ func newAddrMarshalerCtxInstr(t reflect.Type) Instruction {
 		v := reflect.NewAt(t, p)
 		m := v.Interface().(MarshalerCtx)
 		if err := m.WriteJSONContext(es.opts.ctx, w); err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJettisonCtx}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerFuncJettisonCtx}
 		}
 		return nil
 	}
@@ -273,7 +276,7 @@ func newJSONMarshalerInstr(t reflect.Type) Instruction {
 		}
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{err, t, marshalerKindJSON}
+			return &MarshalerError{err, t, marshalerFuncJSON}
 		}
 		_, err = w.Write(b)
 		return err
@@ -295,7 +298,7 @@ func newAddrJSONMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(json.Marshaler)
 		b, err := m.MarshalJSON()
 		if err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindJSON}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerFuncJSON}
 		}
 		_, err = w.Write(b)
 		return err
@@ -314,7 +317,7 @@ func newTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{err, t, marshalerKindText}
+			return &MarshalerError{err, t, marshalerFuncText}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -343,7 +346,7 @@ func newAddrTextMarshalerInstr(t reflect.Type) Instruction {
 		m := v.Interface().(encoding.TextMarshaler)
 		b, err := m.MarshalText()
 		if err != nil {
-			return &MarshalerError{err, reflect.PtrTo(t), marshalerKindText}
+			return &MarshalerError{err, reflect.PtrTo(t), marshalerFuncText}
 		}
 		if err := w.WriteByte('"'); err != nil {
 			return err
@@ -913,7 +916,7 @@ func interfaceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		}
 		vt = vt.Elem()
 	}
-	instr, err := cachedTypeInstr(vt)
+	instr, err := cachedTypeInstr(vt, false)
 	if err != nil {
 		return err
 	}
@@ -946,7 +949,7 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 	if isPtr {
 		et = et.Elem()
 	}
-	eins, err := cachedTypeInstr(et)
+	eins, err := cachedTypeInstr(et, false)
 	if err != nil {
 		return nil, &UnsupportedTypeError{Typ: t}
 	}
@@ -1009,7 +1012,7 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 	if isPtr {
 		et = et.Elem()
 	}
-	eins, err := cachedTypeInstr(et)
+	eins, err := cachedTypeInstr(et, false)
 	if err != nil {
 		return nil, &UnsupportedTypeError{Typ: t}
 	}
@@ -1081,7 +1084,7 @@ func newMapInstr(t reflect.Type) (Instruction, error) {
 	if !isString(kt) && !isInteger(kt) && !kt.Implements(textMarshalerType) {
 		return nil, &UnsupportedTypeError{Typ: t}
 	}
-	vinstr, err := cachedTypeInstr(t.Elem())
+	vinstr, err := cachedTypeInstr(t.Elem(), false)
 	if err != nil {
 		return nil, err
 	}

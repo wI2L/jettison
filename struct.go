@@ -138,7 +138,7 @@ func newStructFieldInstr(f field) (instr Instruction, err error) {
 	// field is a pointer, the instruction is then
 	// wrapped with another one that writes null
 	// if the pointer is nil.
-	instr, err = cachedTypeInstr(ft)
+	instr, err = cachedTypeInstr(ft, false)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,8 @@ func newStructFieldInstr(f field) (instr Instruction, err error) {
 	}
 	// The length of sequences must be equal.
 	if len(f.indirSeq) != len(f.offsetSeq) {
-		return nil, fmt.Errorf("inconsistent indirection and offset sequences length: %d and %d",
+		return nil, fmt.Errorf(
+			"inconsistent sequences length: indir=%d, offset=%d",
 			len(f.indirSeq), len(f.offsetSeq),
 		)
 	}
@@ -447,7 +448,7 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 				omitEmpty:  opts.Contains("omitempty"),
 				quoted:     opts.Contains("string") && isBasicType(ft),
 				keyNonEsc:  []byte(`,"` + name + `":`),
-				keyEscHTML: append([]byte{}, escBuf.Bytes()...), // copy
+				keyEscHTML: append([]byte(nil), escBuf.Bytes()...), // copy
 				offsetSeq:  f.offsetSeq,
 				indirSeq:   f.indirSeq,
 				countSeq:   f.countSeq,

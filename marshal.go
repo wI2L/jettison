@@ -3,6 +3,7 @@ package jettison
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -26,6 +27,26 @@ type Marshaler interface {
 // that may be provided at runtime using WithContext.
 type MarshalerCtx interface {
 	WriteJSONContext(context.Context, Writer) error
+}
+
+const (
+	marshalerFuncJSON        = "MarshalJSON"
+	marshalerFuncText        = "MarshalText"
+	marshalerFuncJettison    = "WriteJSON"
+	marshalerFuncJettisonCtx = "WriteJSONContext"
+)
+
+// MarshalerError represents an error from calling
+// a MarshalJSON or MarshalText method.
+type MarshalerError struct {
+	Err      error
+	Typ      reflect.Type
+	funcName string
+}
+
+// Error implements the builtin error interface.
+func (e *MarshalerError) Error() string {
+	return fmt.Sprintf("%s(%s): %s", e.funcName, e.Typ, e.Err)
 }
 
 // Register records a new compiled encoder for the
@@ -68,7 +89,7 @@ func Marshal(v interface{}) ([]byte, error) {
 	if err := enc.encode(typ, v, buf); err != nil {
 		return nil, err
 	}
-	b := append([]byte(nil), buf.Bytes()...)
+	b := append([]byte(nil), buf.Bytes()...) // copy
 	return b, nil
 }
 
@@ -99,11 +120,10 @@ type cachedEncoder struct {
 }
 
 // getCachedEncoder returns a suitable encoder for
-// the type of i. If the encoder does not exists in
-// the cache, a new one is created, making sure that
-// only one is created at a time. If the function is
-// called concurently for the same type, the caller
-// waits for the original to complete and receives
+// the given type. If the encoder does not exists in
+// the cache, a new one is created. If the function
+// is called concurently for the same type, callers
+// waits until the compilation finish and receives
 // the encoder that was created by the first call.
 func getCachedEncoder(typ reflect.Type) (*Encoder, error) {
 	v, exists := encoderCache.Load(typ)
