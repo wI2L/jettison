@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/wI2L/jettison"
 )
@@ -125,6 +126,32 @@ func Example_customMarshaler() {
 	// ["unknown","zebra","gopher","zebra","unknown","zebra","gopher"]
 }
 
+func ExampleTimeLayout() {
+	t := time.Date(2019, time.December, 25, 16, 44, 28, 0, time.UTC)
+
+	enc, err := jettison.NewEncoder(reflect.TypeOf(t))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, layout := range []string{
+		time.RFC3339,
+		time.RFC822,
+		time.RFC1123Z,
+		time.Kitchen,
+	} {
+		var buf bytes.Buffer
+		if err := enc.Encode(t, &buf, jettison.TimeLayout(layout)); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s\n", buf.String())
+	}
+	// Output:
+	// "2019-12-25T16:44:28Z"
+	// "25 Dec 19 16:44 UTC"
+	// "Wed, 25 Dec 2019 16:44:28 +0000"
+	// "4:44PM"
+}
+
 func ExampleWithFields() {
 	type Z struct {
 		Omega int `json:"ω"`
@@ -187,10 +214,8 @@ func ExampleIntegerBase() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var buf bytes.Buffer
-
 	for _, base := range []int{2, 8, 10, 16, 36} {
-		buf.Reset()
+		var buf bytes.Buffer
 		if err := enc.Encode(&x, &buf, jettison.IntegerBase(base)); err != nil {
 			log.Fatal(err)
 		}
