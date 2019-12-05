@@ -106,7 +106,7 @@ func newTypeInstr(t reflect.Type, skipSpecialAndMarshalers bool) (Instruction, e
 	}
 skip:
 	if isBasicType(t) {
-		return basicTypeInstr(t.Kind()), nil
+		return basicTypeInstr(t.Kind())
 	}
 	var (
 		err error
@@ -374,42 +374,31 @@ func specialTypeInstr(t reflect.Type) Instruction {
 
 // basicTypeInstr returns the instruction associated
 // with the basic type that has the given kind.
-func basicTypeInstr(k reflect.Kind) Instruction {
+func basicTypeInstr(k reflect.Kind) (Instruction, error) {
 	// Keep in sync with isBasicType.
 	switch k {
 	case reflect.String:
-		return stringInstr
+		return stringInstr, nil
 	case reflect.Bool:
-		return boolInstr
-	case reflect.Int:
-		return intInstr
-	case reflect.Int8,
+		return boolInstr, nil
+	case reflect.Int,
+		reflect.Int8,
 		reflect.Int16,
 		reflect.Int32,
 		reflect.Int64:
-		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			return integerInstr(p, w, es, k)
-		}
-	case reflect.Uint:
-		return uintInstr
-	case reflect.Uint8,
+		return newIntInstr(k)
+	case reflect.Uint,
+		reflect.Uint8,
 		reflect.Uint16,
 		reflect.Uint32,
 		reflect.Uint64,
 		reflect.Uintptr:
-		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			return unsignedIntegerInstr(p, w, es, k)
-		}
-	case reflect.Float32:
-		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			return floatInstr(p, w, es, 32)
-		}
-	case reflect.Float64:
-		return func(p unsafe.Pointer, w Writer, es *encodeState) error {
-			return floatInstr(p, w, es, 64)
-		}
+		return newUintInstr(k)
+	case reflect.Float32,
+		reflect.Float64:
+		return newFloatInstr(k)
 	default:
-		return nil
+		return nil, fmt.Errorf("unknown basic kind: %s", k)
 	}
 }
 
@@ -465,8 +454,7 @@ func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 		goto end
 	}
 	for i := 0; i < len(b); {
-		c := b[i]
-		if c < utf8.RuneSelf {
+		if c := b[i]; c < utf8.RuneSelf {
 			if isSafeJSONChar(c) {
 				if !es.opts.noHTMLEscape && isHTMLChar(c) {
 					goto escape
@@ -484,32 +472,27 @@ func writeEscapedBytes(b []byte, w Writer, es *encodeState) error {
 					return err
 				}
 			}
-			if err := w.WriteByte('\\'); err != nil {
-				return err
-			}
-			var err error
 			// The encoding/json package implements only
 			// a few of the special two-character escape
 			// sequence described in the RFC 8259, Section 7.
 			// \b and \f were ignored on purpose, see
 			// https://codereview.appspot.com/4678046.
+			buf := es.scratch[:0]
 			switch c {
 			case '"', '\\':
-				err = w.WriteByte(c)
+				buf = append(buf, '\\', c)
 			case '\n': // 0xA, line feed
-				err = w.WriteByte('n')
+				buf = append(buf, '\\', 'n')
 			case '\r': // 0xD, carriage return
-				err = w.WriteByte('r')
+				buf = append(buf, '\\', 'r')
 			case '\t': // 0x9, horizontal tab
-				err = w.WriteByte('t')
+				buf = append(buf, '\\', 't')
 			default:
-				buf := es.scratch[:0]
-				buf = append(buf, "u00"...)
+				buf = append(buf, `\u00`...)
 				buf = append(buf, hex[c>>4])
 				buf = append(buf, hex[c&0xF])
-				_, err = w.Write(buf)
 			}
-			if err != nil {
+			if _, err := w.Write(buf); err != nil {
 				return err
 			}
 			i++
@@ -589,84 +572,105 @@ func isHTMLChar(c byte) bool {
 	return false
 }
 
-//nolint:interfacer
-func integerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
-	var i int64
+type (
+	intCastFn  func(p unsafe.Pointer) int64
+	uintCastFn func(p unsafe.Pointer) uint64
+)
+
+func newIntInstr(k reflect.Kind) (Instruction, error) {
+	var cast intCastFn
 	switch k {
+	case reflect.Int:
+		cast = func(p unsafe.Pointer) int64 { return int64(*(*int)(p)) }
 	case reflect.Int8:
-		i = int64(*(*int8)(p))
+		cast = func(p unsafe.Pointer) int64 { return int64(*(*int8)(p)) }
 	case reflect.Int16:
-		i = int64(*(*int16)(p))
+		cast = func(p unsafe.Pointer) int64 { return int64(*(*int16)(p)) }
 	case reflect.Int32:
-		i = int64(*(*int32)(p))
+		cast = func(p unsafe.Pointer) int64 { return int64(*(*int32)(p)) }
 	case reflect.Int64:
-		i = *(*int64)(p)
+		cast = func(p unsafe.Pointer) int64 { return *(*int64)(p) }
 	default:
-		return fmt.Errorf("invalid kind: %s", k)
+		return nil, fmt.Errorf("invalid kind: %s", k)
 	}
-	b := strconv.AppendInt(es.scratch[:0], i, es.opts.integerBase)
-	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
-}
-
-func intInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
-	b := strconv.AppendInt(es.scratch[:0], int64(*(*int)(p)), es.opts.integerBase)
-	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
-}
-
-//nolint:interfacer
-func unsignedIntegerInstr(p unsafe.Pointer, w Writer, es *encodeState, k reflect.Kind) error {
-	var i uint64
-	switch k {
-	case reflect.Uint8:
-		i = uint64(*(*uint8)(p))
-	case reflect.Uint16:
-		i = uint64(*(*uint16)(p))
-	case reflect.Uint32:
-		i = uint64(*(*uint32)(p))
-	case reflect.Uint64:
-		i = *(*uint64)(p)
-	case reflect.Uintptr:
-		i = uint64(*(*uintptr)(p))
-	default:
-		return fmt.Errorf("invalid kind: %s", k)
-	}
-	b := strconv.AppendUint(es.scratch[:0], i, es.opts.integerBase)
-	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
-}
-
-func uintInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
-	b := strconv.AppendUint(es.scratch[:0], uint64(*(*uint)(p)), es.opts.integerBase)
-	return writeIntegerBytes(w, b, es.opts.integerBase > 10)
-}
-
-func writeIntegerBytes(w Writer, b []byte, quote bool) error {
-	if quote {
-		if err := w.WriteByte('"'); err != nil {
-			return err
-		}
-	}
-	if _, err := w.Write(b); err != nil {
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		dst := es.scratch[:1]
+		// Save one byte at the beginning of the
+		// buffer for an eventual double-quote
+		// char that may be added before writing
+		// to the stream.
+		dst = strconv.AppendInt(dst, cast(p), es.opts.integerBase)
+		dst = maybeQuoteBytes(dst, es.opts.integerBase > 10)
+		_, err := w.Write(dst)
 		return err
+	}, nil
+}
+
+func newUintInstr(k reflect.Kind) (Instruction, error) {
+	var cast uintCastFn
+	switch k {
+	case reflect.Uint:
+		cast = func(p unsafe.Pointer) uint64 { return uint64(*(*uint)(p)) }
+	case reflect.Uint8:
+		cast = func(p unsafe.Pointer) uint64 { return uint64(*(*uint8)(p)) }
+	case reflect.Uint16:
+		cast = func(p unsafe.Pointer) uint64 { return uint64(*(*uint16)(p)) }
+	case reflect.Uint32:
+		cast = func(p unsafe.Pointer) uint64 { return uint64(*(*uint32)(p)) }
+	case reflect.Uint64:
+		cast = func(p unsafe.Pointer) uint64 { return *(*uint64)(p) }
+	case reflect.Uintptr:
+		cast = func(p unsafe.Pointer) uint64 { return uint64(*(*uintptr)(p)) }
+	default:
+		return nil, fmt.Errorf("invalid kind: %s", k)
 	}
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		dst := es.scratch[:1]
+		// Save one byte at the beginning of the
+		// buffer for an eventual double-quote
+		// char that may be added before writing
+		// to the stream.
+		dst = strconv.AppendUint(dst, cast(p), es.opts.integerBase)
+		dst = maybeQuoteBytes(dst, es.opts.integerBase > 10)
+		_, err := w.Write(dst)
+		return err
+	}, nil
+}
+
+func maybeQuoteBytes(b []byte, quote bool) []byte {
 	if quote {
-		if err := w.WriteByte('"'); err != nil {
-			return err
-		}
+		b[0] = '"'
+		b = append(b, '"')
+	} else {
+		b = b[1:]
 	}
-	return nil
+	return b
+}
+
+type floatCastFn func(p unsafe.Pointer) float64
+
+func newFloatInstr(k reflect.Kind) (Instruction, error) {
+	var (
+		cast floatCastFn
+		bs   int
+	)
+	switch k {
+	case reflect.Float32:
+		cast = func(p unsafe.Pointer) float64 { return float64(*(*float32)(p)) }
+		bs = 32
+	case reflect.Float64:
+		cast = func(p unsafe.Pointer) float64 { return *(*float64)(p) }
+		bs = 64
+	default:
+		return nil, fmt.Errorf("invalid bit size: %d", bs)
+	}
+	return func(p unsafe.Pointer, w Writer, es *encodeState) error {
+		return writeFloat(cast(p), bs, w, es)
+	}, nil
 }
 
 //nolint:interfacer
-func floatInstr(p unsafe.Pointer, w Writer, es *encodeState, bitSize int) error {
-	var f float64
-	switch bitSize {
-	case 32:
-		f = float64(*(*float32)(p))
-	case 64:
-		f = *(*float64)(p)
-	default:
-		return fmt.Errorf("invalid bit size: %d", bitSize)
-	}
+func writeFloat(f float64, bitSize int, w Writer, es *encodeState) error {
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		return &UnsupportedValueError{strconv.FormatFloat(f, 'g', -1, bitSize)}
 	}
@@ -718,7 +722,7 @@ func writeByteArrayAsString(p unsafe.Pointer, w Writer, es *encodeState, length 
 // otherwise, it writes a base64 representation.
 func byteSliceInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 	shdr := (*reflect.SliceHeader)(p)
-	if shdr.Data == uintptr(0) {
+	if shdr.Data == 0 {
 		_, err := w.WriteString("null")
 		return err
 	}
@@ -847,14 +851,11 @@ func timeInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 		_, err := w.Write(b)
 		return err
 	}
-	b := t.AppendFormat(es.scratch[:0], es.opts.timeLayout)
-	if err := w.WriteByte('"'); err != nil {
-		return err
-	}
-	if _, err := w.Write(b); err != nil {
-		return err
-	}
-	return w.WriteByte('"')
+	b := append(es.scratch[:0], '"')
+	b = t.AppendFormat(b, es.opts.timeLayout)
+	b = append(b, '"')
+	_, err := w.Write(b)
+	return err
 }
 
 // durationInstr writes a time.Duration to w.
@@ -862,37 +863,40 @@ func durationInstr(p unsafe.Pointer, w Writer, es *encodeState) error {
 	d := *(*time.Duration)(p)
 
 	if es.opts.durationFmt == DurationString {
-		// The largest time is 2540400h10m10.000000000s,
-		// which fit in a 32-byte buffer.
-		b := es.scratch[:32]
-		b = appendDuration(b, d)
-
-		if err := w.WriteByte('"'); err != nil {
-			return err
-		}
-		if _, err := w.Write(b); err != nil {
-			return err
-		}
-		return w.WriteByte('"')
+		// The largest representation of a duration
+		// can take up to 25 bytes, plus 2 bytes
+		// for quotes.
+		s := 25 + 2
+		b := es.scratch[:s]
+		b[s-1] = '"'
+		// appendDuration writes in the buffer
+		// from right to left.
+		rb := appendDuration(b[:s-1], d)
+		b = b[s-1-len(rb)-1:]
+		b[0] = '"'
+		_, err := w.Write(b)
+		return err
 	}
 	switch es.opts.durationFmt {
 	case DurationMinutes:
-		f := d.Minutes()
-		return floatInstr(unsafe.Pointer(&f), w, es, 64)
+		return writeFloat(d.Minutes(), 64, w, es)
 	case DurationSeconds:
-		f := d.Seconds()
-		return floatInstr(unsafe.Pointer(&f), w, es, 64)
+		return writeFloat(d.Seconds(), 64, w, es)
 	case DurationMicroseconds:
-		i := int64(d) / 1e3
-		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+		return writeIntDuration(int64(d)/1e3, w, es)
 	case DurationMilliseconds:
-		i := int64(d) / 1e6
-		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+		return writeIntDuration(int64(d)/1e6, w, es)
 	case DurationNanoseconds:
-		i := d.Nanoseconds()
-		return integerInstr(unsafe.Pointer(&i), w, es, reflect.Int64)
+		return writeIntDuration(d.Nanoseconds(), w, es)
 	}
 	return fmt.Errorf("unknown duration format: %v", es.opts.durationFmt)
+}
+
+//nolint:interfacer
+func writeIntDuration(d int64, w Writer, es *encodeState) error {
+	b := strconv.AppendInt(es.scratch[:0], d, 10)
+	_, err := w.Write(b)
+	return err
 }
 
 // interfaceInstr writes an interface value to w.
@@ -1024,7 +1028,7 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 	}
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
 		shdr := (*reflect.SliceHeader)(v)
-		if shdr.Data == uintptr(0) {
+		if shdr.Data == 0 {
 			if es.opts.nilSliceEmpty {
 				_, err := w.WriteString("[]")
 				return err

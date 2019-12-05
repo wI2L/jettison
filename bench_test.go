@@ -100,8 +100,8 @@ func BenchmarkSimplePayload(b *testing.B) {
 			// not coerce strings to valid UTF-8 and doesn't
 			// escape HTML characters either.
 			// None of the string fields of the SimplePayload
-			// type contains HTML characters nor contains invalid
-			// UTF-8 byte sequences, so this is fine.
+			// type contains HTML characters nor invalid UTF-8
+			// byte sequences, so this is fine.
 			if err := enc.Encode(sp, &buf, NoUTF8Coercion(), NoHTMLEscaping()); err != nil {
 				b.Fatal(err)
 			}
@@ -303,6 +303,39 @@ func benchMap(enc *Encoder, m map[string]int, opts ...Option) func(b *testing.B)
 	}
 }
 
+func BenchmarkTime(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
+	t := time.Now()
+	enc, err := NewEncoder(reflect.TypeOf(t))
+	if err != nil {
+		b.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		opt  Option
+	}{
+		{"layout", TimeLayout(defaultTimeLayout)},
+		{"timestamp", UnixTimestamp()},
+	}
+	for _, c := range cases {
+		var buf bytes.Buffer
+		c := c
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := enc.Encode(&t, &buf, c.opt); err != nil {
+					b.Fatal(err)
+				}
+				b.SetBytes(int64(buf.Len()))
+				buf.Reset()
+			}
+		})
+	}
+}
+
 func BenchmarkDuration(b *testing.B) {
 	if testing.Short() {
 		b.SkipNow()
@@ -328,7 +361,6 @@ func BenchmarkDuration(b *testing.B) {
 		)
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
-			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if err := enc.Encode(&d, &buf, opts...); err != nil {
 					b.Fatal(err)

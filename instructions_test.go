@@ -1,15 +1,11 @@
 package jettison
 
 import (
-	"bytes"
 	"fmt"
-	"math"
 	"reflect"
 	"regexp"
 	"runtime"
-	"strconv"
 	"testing"
-	"unsafe"
 )
 
 func TestCachedTypeInstr(t *testing.T) {
@@ -74,14 +70,14 @@ func TestBasicTypeInstr(t *testing.T) {
 		reflect.Float64,
 	}
 	for _, k := range kinds() {
-		instr := basicTypeInstr(k)
-		if instr == nil && kindIn(valid, k) {
+		_, err := basicTypeInstr(k)
+		if err != nil && kindIn(valid, k) {
 			t.Errorf("basicTypeInstr(%s): expected non-nil instruction", k)
 		}
 	}
 }
 
-// TestIntegerInstr tests that integerInstr returns
+// TestIntegerInstr tests that newIntInstr returns
 // an error for non integer kinds.
 func TestIntegerInstr(t *testing.T) {
 	valid := []reflect.Kind{
@@ -91,24 +87,14 @@ func TestIntegerInstr(t *testing.T) {
 		reflect.Int64,
 	}
 	for _, k := range kinds() {
-		var i int64 = math.MaxInt8
-		var buf bytes.Buffer
-		want := strconv.Itoa(math.MaxInt8)
-
-		err := integerInstr(unsafe.Pointer(&i), &buf, newState(), k)
-		if err != nil {
-			if kindIn(valid, k) {
-				t.Errorf("integerInstr(%s): %s", k, err)
-			}
-		} else {
-			if s := buf.String(); s != want {
-				t.Errorf("got %s, want %s", s, want)
-			}
+		_, err := newIntInstr(k)
+		if err != nil && kindIn(valid, k) {
+			t.Errorf("newIntInstr(%s): %s", k, err)
 		}
 	}
 }
 
-// TestUnsignedIntegerInstr tests that unsignedIntegerInstr
+// TestUnsignedIntegerInstr tests that newUintInstr
 // returns an error for non unsigned integer kinds.
 func TestUnsignedIntegerInstr(t *testing.T) {
 	valid := []reflect.Kind{
@@ -119,19 +105,9 @@ func TestUnsignedIntegerInstr(t *testing.T) {
 		reflect.Uintptr,
 	}
 	for _, k := range kinds() {
-		var i uint64 = math.MaxUint8
-		var buf bytes.Buffer
-		want := strconv.Itoa(math.MaxUint8)
-
-		err := unsignedIntegerInstr(unsafe.Pointer(&i), &buf, newState(), k)
-		if err != nil {
-			if kindIn(valid, k) {
-				t.Errorf("unsignedIntegerInstr(%s): %s", k, err)
-			}
-		} else {
-			if s := buf.String(); s != want {
-				t.Errorf("got %s, want %s", s, want)
-			}
+		_, err := newUintInstr(k)
+		if err != nil && kindIn(valid, k) {
+			t.Errorf("newUintInstr(%s): %s", k, err)
 		}
 	}
 }
@@ -139,12 +115,14 @@ func TestUnsignedIntegerInstr(t *testing.T) {
 // TestFloatInstr tests that floatInstr returns an
 // error when an invalid bit size is used.
 func TestFloatInstr(t *testing.T) {
-	f := math.MaxFloat32
-	for bs := 0; bs <= 256; bs++ {
-		var buf bytes.Buffer
-		err := floatInstr(unsafe.Pointer(&f), &buf, newState(), bs)
-		if err != nil && (bs == 32 || bs == 64) {
-			t.Errorf("floatInstr(%d): %s", bs, err)
+	valid := []reflect.Kind{
+		reflect.Float32,
+		reflect.Float64,
+	}
+	for _, k := range kinds() {
+		_, err := newFloatInstr(k)
+		if err != nil && kindIn(valid, k) {
+			t.Errorf("newFloatInstr(%s): %s", k, err)
 		}
 	}
 }
