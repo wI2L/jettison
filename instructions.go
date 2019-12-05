@@ -959,9 +959,9 @@ func newArrayInstr(t reflect.Type) (Instruction, error) {
 	}
 	var esz uintptr
 	if !isPtr {
-		esz = et.Size()
+		esz = alignedSize(et)
 	} else {
-		esz = t.Elem().Size()
+		esz = alignedSize(t.Elem())
 	}
 	length := t.Len()
 
@@ -1022,9 +1022,9 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 	}
 	var esz uintptr
 	if !isPtr {
-		esz = et.Size()
+		esz = alignedSize(et)
 	} else {
-		esz = t.Elem().Size()
+		esz = alignedSize(t.Elem())
 	}
 	return func(v unsafe.Pointer, w Writer, es *encodeState) error {
 		shdr := (*reflect.SliceHeader)(v)
@@ -1066,6 +1066,19 @@ func newSliceInstr(t reflect.Type) (Instruction, error) {
 		}
 		return w.WriteByte(']')
 	}, nil
+}
+
+func alignedSize(t reflect.Type) uintptr {
+	a := t.Align()
+	s := t.Size()
+	return align(uintptr(a), s)
+}
+
+func align(align, size uintptr) uintptr {
+	if align != 0 && (size%align) != 0 {
+		size = ((size / align) + 1) * align
+	}
+	return size
 }
 
 type kv struct {
