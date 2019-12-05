@@ -815,6 +815,8 @@ func TestStructFieldOmitempty(t *testing.T) {
 		J3 map[int]int `json:"j3,omitempty"`
 		K1 []string    `json:"k1,omitempty"`
 		K2 []string    `json:"k2,omitempty"`
+		L1 [0]int      `json:"l1,omitempty"`
+		L2 [2]int      `json:"l2,omitempty"`
 	}
 	enc, err := NewEncoder(reflect.TypeOf(x{}))
 	if err != nil {

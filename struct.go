@@ -579,7 +579,9 @@ func isEmpty(p unsafe.Pointer, t reflect.Type) bool {
 	case reflect.Slice:
 		return (*reflect.SliceHeader)(p).Len == 0
 	case reflect.Array:
-		return false
+		if t.Len() == 0 {
+			return true
+		}
 	case reflect.Map:
 		v := reflect.NewAt(t, p).Elem()
 		return v.Len() == 0
