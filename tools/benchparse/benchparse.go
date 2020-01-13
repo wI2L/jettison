@@ -110,6 +110,9 @@ func parse(scanr *bufio.Scanner) (set, error) {
 		if _, ok := stats[bname]; !ok {
 			stats[bname] = nil
 		}
+		if len(r) <= 1 {
+			continue
+		}
 		f, err := strconv.ParseFloat(r[1], 64)
 		if err != nil {
 			return nil, fmt.Errorf("invalid float value at line %d: %s", i, err)

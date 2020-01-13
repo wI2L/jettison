@@ -1,5 +1,5 @@
 <h1 align="center">Jettison</h1>
-<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a high performance, reflection-less, and configurable <strong>JSON</strong> encoder for the Go programming language, inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at <strong>100%</strong> compatibility with the standard library.</p>
+<p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a fast and flexible <strong>JSON</strong> encoder for the Go programming language, inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at <strong>100%</strong> compatibility with the standard library.</p>
 <p align="center">
     <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
     <a href="https://goreportcard.com/report/wI2L/jettison"><img src="https://goreportcard.com/badge/github.com/wI2L/fizz"></a>
@@ -20,37 +20,32 @@ Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). R
 ```sh
 $ go get github.com/wI2L/jettison
 ```
-##### :exclamation: Requires Go1.12+, due to the usage of the [`io.StringWriter`](https://golang.org/pkg/io/#StringWriter) interface.
 
 ## Key features
 
 - Fast, see [benchmarks](#benchmarks)
-- Efficient, zero allocations on average
+- No dynamic memory allocations in hot paths
 - Behavior identical to the standard library by default
 - No code generation required
 - Clear and concise API
 - Configurable with opt-in functional options
 - Native support for `time.Time` and `time.Duration` types
-- Custom `Marshaler` interface to work with a `Writer`
+- Custom `AppendMarshaler` interface to avoid allocations
 - Extensive testsuite that compares its output against `encoding/json`
 
 ## Overview
 
-The goal of Jettision is to take up the idea introduced by the **bet365/jingo** package and build a fully-featured JSON encoder around it, that comply with the behavior of the [encoding/json](https://golang.org/pkg/encoding/json/) package. Unlike the latter, Jettison does not use reflection during marshaling, but only once to create the instruction set for a given type ahead of time. The drawback to this approach requires to instantiate an encoder once for each type that needs to be marshaled, but that is overcomed with a package cache.
+The goal of Jettision is to take up the idea introduced by the **bet365/jingo** package and build a fully-featured JSON encoder around it, that comply with the behavior of the [encoding/json](https://golang.org/pkg/encoding/json/) package. Unlike the latter, Jettison does not use reflection during marshaling, but only once to create the instruction set for a given type ahead of time. The drawback to this approach requires to instantiate an instruction-set once for each type that needs to be marshaled, but that is overcomed with a package cache.
 
 The package aims to have a behavior similar to that of the standard library for all types encoding and struct tags, meaning that the documentation of the `json.Marshal` [function](https://golang.org/pkg/encoding/json/#Marshal) is applicable for Jettison, with a few exceptions described in this [section](#differences-with-encodingjson). As such, most of the tests compare their output against it to guarantee that.
 
 ### Implementation details
 
-The main concept of Jettison consists of using pre-build encoders to reduce the cost of using the `reflect` package at runtime. When a new instance of an encoder is created for a specific type, a set of _instructions_ is recursively generated, which defines how to iteratively encode a value. An _instruction_ is a function or a closure, that have all the information required to read the data from memory using _unsafe_ operations during the instruction set execution.
+The main concept of Jettison consists of using pre-build instructions-set to reduce the cost of using the `reflect` package at runtime. When marshaling a value, a set of _instructions_ is recursively generated for its type, which defines how to iteratively encode it. An _instruction_ is a function or a closure, that have all the information required to read the data from memory using _unsafe_ operations (pointer type conversion, arithmetic...) during the instruction set execution.
 
 ### Differences with `encoding/json`
 
 All notable differences with the standard library behavior are listed below. Please note that these might evolve with future versions of the package.
-
-##### Limitations
-
-- The JSON returned by the `MarshalJSON` method of types implementing the `json.Marshaler` interface is neither validated nor compacted.
 
 ##### Improvements
 
@@ -68,7 +63,7 @@ All notable differences with the standard library behavior are listed below. Ple
 
 ### Basic
 
-Starting from version *v0.3.0*, the `Marshal` and `MarshalTo` functions are available. The first will allocate a new bytes slice to store the encoding of the given value, similar to `json.Marshal`, while the latter will write to the `Writer`. These functions use a package's cache to fetch the appropriate encoder for the given value type. If an encoder does not exist, a new one is created on the fly and stored in the cache for future reuse.
+As stated above, the library behave similarly to the `encoding/json` package. You can simply replace the `json.Marshal` function wihh `jettison.Marshal`, and expect the same output with better performances.
 
 ```go
 type X struct {
@@ -90,46 +85,12 @@ os.Stdout.Write(b)
 
 ### Advanced
 
-If more control over the encoding behavior is required, or to avoid the latency of creating a new encoder when encoding a type for the first time, an encoder can be created ahead of time, during initialization. Note that if you don't invoke the `Compile` method, the instruction set will be generated once, on the first call to the `Encode` method.
-
-The second parameter of the `Encode` method is an interface that groups the `io.Writer`, `io.StringWriter` and `io.ByteWriter` interfaces. In the following example, we use a new `bytes.Buffer` instance, which implements the three interfaces previously mentioned.
-
-```go
-type X struct {
-    A string `json:"a,omitempty"`
-    B int    `json:"b"`
-}
-enc, err := jettison.NewEncoder(reflect.TypeOf(X{}))
-if err != nil {
-    log.Fatal(err)
-}
-err = enc.Compile()
-if err != nil {
-    log.Fatal(err)
-}
-xx := X{
-    A: "Loreum",
-    B: 42,
-}
-var buf bytes.Buffer
-if err := enc.Encode(&xx, &buf); err != nil {
-    log.Fatal(err)
-}
-os.Stdout.Write(b)
-```
-```json
-{"a":"Loreum","b":42}
-```
-
-### Options
-
-Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are available to customize the behavior of an encoder during marshaling. The third parameter of the `Encode` method is variadic and accept a list of functional options described below.
+If more control over the encoding behavior is required, use the `MarshalOpts`. The second parameter is variadic and accept a list of functional opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) described below:
 
 - **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
-- **IntegerBase** • Defines the radix (base number) used to encode signed and unsigned integers. The decimal base (_10_) is the default.
 - **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
-- **UnixTimestamp** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since January 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
-- **UnsortedMap** • Disables map keys sort. See [Map](#map) benchmark for performance difference.
+- **UnixTime** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since January 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
+- **UnsortedMap** • Disables map keys sort.
 - **ByteArrayAsString** • Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
 - **RawByteSlice** • Disables the *base64* default encoding used for byte slices.
 - **NilMapEmpty** • Encodes nil Go maps as empty JSON objects rather than `null`.
@@ -137,7 +98,13 @@ Several opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) are 
 - **NoStringEscaping** • Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
 - **NoHTMLEscaping** • Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
 - **NoUTF8Coercion** • Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
-- **WithFields** • Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.
+- **AllowList** • Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.
+- **DenyList** • Sets a blacklist that represents which fields are ignored during the marshaling of a Go struct.
+- **NoCompact** • Disables the compaction of JSON output produced by `MarshalJSON` method, and the content of `json.RawMessage` values.
+- **NoNumberValidation** • Disables the validation of `json.Number` values.
+- **WithContext** • Sets the `context.Context` to be passed to invocations of `AppendJSONContext` methods.
+
+Take a look at the [examples](example_test.go) to see these options in action.
 
 ## Benchmarks
 
@@ -148,104 +115,99 @@ go get github.com/cespare/prettybench
 go test -bench=. | prettybench
 ```
 
-### Results
+### Results `-short`
 
 The benchmarks has been run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a machine with the following specs:
 ```
 OS:  Ubuntu 16.04.6 LTS
 CPU: Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
 Mem: 16GB
-Go:  go version go1.13 linux/amd64
-Tag: v0.4.1
+Go:  go version go1.13.4 linux/amd64
+Tag: v0.5.0
 ```
 
 <details><summary>Stats</summary><br><pre>
-name                            time/op
-SimplePayload/encoding/json-4      656ns ± 1%
-SimplePayload/jsoniter-4           698ns ± 1%
-SimplePayload/gojay-4              473ns ± 2%
-SimplePayload/jettison-4           443ns ± 2%
-ComplexPayload/encoding/json-4    2.59µs ± 1%
-ComplexPayload/jsoniter-4         2.37µs ± 0%
-ComplexPayload/jettison-4         1.56µs ± 1%
-Interface/encoding/json-4          162ns ± 5%
-Interface/jsoniter-4               140ns ± 3%
-Interface/jettison-4              69.3ns ± 3%
-Map/encoding/json-4               1.20µs ± 1%
-Map/jsoniter-4                    1.09µs ± 0%
-Map/jettison/sort-4                866ns ± 0%
-Map/jettison/nosort-4              381ns ± 1%
+name                    time/op
+Simple/standard-4          662ns ± 1%
+Simple/jsoniter-4          724ns ± 2%
+Simple/segmentj-4          377ns ± 1%
+Simple/jettison-4          475ns ± 1%
+Complex/standard-4        14.7µs ± 1%
+Complex/jsoniter-4        15.1µs ± 1%
+Complex/segmentj-4        10.5µs ± 1%
+Complex/jettison-4        7.25µs ± 1%
+CodeMarshal/standard-4    7.44ms ± 1%
+CodeMarshal/jsoniter-4    8.42ms ± 1%
+CodeMarshal/segmentj-4    5.77ms ± 1%
+CodeMarshal/jettison-4    6.40ms ± 1%
 
-name                            speed
-SimplePayload/encoding/json-4    206MB/s ± 1%
-SimplePayload/jsoniter-4         193MB/s ± 1%
-SimplePayload/gojay-4            286MB/s ± 2%
-SimplePayload/jettison-4         305MB/s ± 1%
-ComplexPayload/encoding/json-4   150MB/s ± 1%
-ComplexPayload/jsoniter-4        163MB/s ± 0%
-ComplexPayload/jettison-4        248MB/s ± 1%
-Interface/encoding/json-4       49.4MB/s ± 5%
-Interface/jsoniter-4            57.3MB/s ± 3%
-Interface/jettison-4             115MB/s ± 3%
-Map/encoding/json-4             15.9MB/s ± 1%
-Map/jsoniter-4                  17.5MB/s ± 0%
-Map/jettison/sort-4             21.9MB/s ± 0%
-Map/jettison/nosort-4           49.9MB/s ± 1%
+name                    speed
+Simple/standard-4        204MB/s ± 1%
+Simple/jsoniter-4        187MB/s ± 2%
+Simple/segmentj-4        358MB/s ± 1%
+Simple/jettison-4        284MB/s ± 1%
+Complex/standard-4      58.0MB/s ± 1%
+Complex/jsoniter-4      54.4MB/s ± 1%
+Complex/segmentj-4      82.1MB/s ± 1%
+Complex/jettison-4       118MB/s ± 1%
+CodeMarshal/standard-4   261MB/s ± 1%
+CodeMarshal/jsoniter-4   230MB/s ± 1%
+CodeMarshal/segmentj-4   336MB/s ± 1%
+CodeMarshal/jettison-4   303MB/s ± 1%
 
-name                            alloc/op
-SimplePayload/encoding/json-4       144B ± 0%
-SimplePayload/jsoniter-4            152B ± 0%
-SimplePayload/gojay-4               512B ± 0%
-SimplePayload/jettison-4           0.00B
-ComplexPayload/encoding/json-4      416B ± 0%
-ComplexPayload/jsoniter-4           472B ± 0%
-ComplexPayload/jettison-4          0.00B
-Interface/encoding/json-4          8.00B ± 0%
-Interface/jsoniter-4               8.00B ± 0%
-Interface/jettison-4               0.00B
-Map/encoding/json-4                 536B ± 0%
-Map/jsoniter-4                      680B ± 0%
-Map/jettison/sort-4                 496B ± 0%
-Map/jettison/nosort-4               128B ± 0%
+name                    alloc/op
+Simple/standard-4           144B ± 0%
+Simple/jsoniter-4           152B ± 0%
+Simple/segmentj-4           144B ± 0%
+Simple/jettison-4           144B ± 0%
+Complex/standard-4        4.76kB ± 0%
+Complex/jsoniter-4        4.64kB ± 0%
+Complex/segmentj-4        3.25kB ± 0%
+Complex/jettison-4        1.38kB ± 0%
+CodeMarshal/standard-4    1.96MB ± 1%
+CodeMarshal/jsoniter-4    2.00MB ± 3%
+CodeMarshal/segmentj-4    2.00MB ± 0%
+CodeMarshal/jettison-4    2.00MB ± 0%
 
-name                            allocs/op
-SimplePayload/encoding/json-4       1.00 ± 0%
-SimplePayload/jsoniter-4            2.00 ± 0%
-SimplePayload/gojay-4               1.00 ± 0%
-SimplePayload/jettison-4            0.00
-ComplexPayload/encoding/json-4      1.00 ± 0%
-ComplexPayload/jsoniter-4           3.00 ± 0%
-ComplexPayload/jettison-4           0.00
-Interface/encoding/json-4           1.00 ± 0%
-Interface/jsoniter-4                1.00 ± 0%
-Interface/jettison-4                0.00
-Map/encoding/json-4                 13.0 ± 0%
-Map/jsoniter-4                      11.0 ± 0%
-Map/jettison/sort-4                 6.00 ± 0%
-Map/jettison/nosort-4               2.00 ± 0%
+name                    allocs/op
+Simple/standard-4           1.00 ± 0%
+Simple/jsoniter-4           2.00 ± 0%
+Simple/segmentj-4           1.00 ± 0%
+Simple/jettison-4           1.00 ± 0%
+Complex/standard-4          96.0 ± 0%
+Complex/jsoniter-4          86.0 ± 0%
+Complex/segmentj-4          64.0 ± 0%
+Complex/jettison-4          15.0 ± 0%
+CodeMarshal/standard-4      1.00 ± 0%
+CodeMarshal/jsoniter-4      2.00 ± 0%
+CodeMarshal/segmentj-4      1.00 ± 0%
+CodeMarshal/jettison-4      1.00 ± 0%
 </pre></details>
 
-#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L45)]
+#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L49)]
 
 Basic payload with fields of type `string`, `int` and `bool`.
 
-<img src="images/simple-payload.png" alt="Simple Payload Benchmark Graph">
+<img src="images/benchmarks/simple.png" height="400px" width="auto" alt="Simple Benchmark Graph">
 
-#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L114)]
+#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L64)]
 
-Large payload with a variety of composite Go types, such as `struct`, multi-dimensions `array`, and `slice`, with pointer and non-pointer value types.
+Large payload with a variety of composite Go types, such as `struct`, `map`, `interface`, multi-dimensions `array` and `slice`, with pointer and non-pointer value types.
 
-<img src="images/complex-payload.png" alt="Complex Payload Benchmark Graph">
+<img src="images/benchmarks/complex.png" height="400px" width="auto" alt="Complex Benchmark Graph">
 
-#### Interface [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L210)]
+#### CodeMarshal [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L68)]
 
-<img src="images/interface.png" alt="Interface Benchmark Graph">
+Borrowed from the `encoding/json` tests. See [testdata/code.json.gz](testdata/code.json.gz).
 
-#### Map [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L253)]
+<img src="images/benchmarks/code-marshal.png" height="400px" width="auto" alt="CodeMarshal Benchmark Graph">
 
-Compares Go map marshaling performances, with and without keys sort.
+## Credits
 
-<img src="images/map.png" alt="Map Benchmark Graph">
+This library and its design has been inspired by the work of others **@bet365** and **@segmentio**.
+See the following projects for reference:
+- [bet365/jingo](https://github.com/bet365/jingo)
+- [segmentio/encoding](https://github.com/segmentio/encoding)
 
 ## License
 

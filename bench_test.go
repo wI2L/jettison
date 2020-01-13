@@ -2,18 +2,37 @@ package jettison
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
-	"crypto/rand"
 	"encoding/json"
-	"reflect"
+	"io/ioutil"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/francoispqt/gojay"
 	jsoniter "github.com/json-iterator/go"
+	segmentj "github.com/segmentio/encoding/json"
 )
 
-var jsoniterStd = jsoniter.ConfigCompatibleWithStandardLibrary
+var jsoniterCfg = jsoniter.ConfigCompatibleWithStandardLibrary
+
+type marshalFunc func(interface{}) ([]byte, error)
+
+type codeResponse struct {
+	Tree     *codeNode `json:"tree"`
+	Username string    `json:"username"`
+}
+
+type codeNode struct {
+	Name     string      `json:"name"`
+	Kids     []*codeNode `json:"kids"`
+	CLWeight float64     `json:"cl_weight"`
+	Touches  int         `json:"touches"`
+	MinT     int64       `json:"min_t"`
+	MaxT     int64       `json:"max_t"`
+	MeanT    int64       `json:"mean_t"`
+}
 
 type simplePayload struct {
 	St   int    `json:"st"`
@@ -27,29 +46,7 @@ type simplePayload struct {
 	V    bool   `json:"v"`
 }
 
-func (*simplePayload) NKeys() int    { return 9 }
-func (t *simplePayload) IsNil() bool { return t == nil }
-
-func (t *simplePayload) MarshalJSONObject(enc *gojay.Encoder) {
-	enc.AddIntKey("st", t.St)
-	enc.AddIntKey("sid", t.Sid)
-	enc.AddStringKey("tt", t.Tt)
-	enc.AddIntKey("gr", t.Gr)
-	enc.AddStringKey("uuid", t.UUID)
-	enc.AddStringKey("ip", t.IP)
-	enc.AddStringKey("ua", t.Ua)
-	enc.AddIntKey("tz", t.Tz)
-	enc.AddBoolKey("v", t.V)
-}
-
-func BenchmarkSimplePayload(b *testing.B) {
-	enc, err := NewEncoder(reflect.TypeOf(simplePayload{}))
-	if err != nil {
-		b.Fatal(err)
-	}
-	if err := enc.Compile(); err != nil {
-		b.Fatal(err)
-	}
+func BenchmarkSimple(b *testing.B) {
 	sp := &simplePayload{
 		St:   1,
 		Sid:  2,
@@ -61,245 +58,56 @@ func BenchmarkSimplePayload(b *testing.B) {
 		Tz:   8,
 		V:    true,
 	}
-	b.Run("encoding/json", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(sp)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jsoniter", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(sp)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("gojay", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			bts, err := gojay.MarshalJSONObject(sp)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jettison", func(b *testing.B) {
-		var buf bytes.Buffer
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			// NoUTF8Coercion and NoHTMLEscaping are used to
-			// have a fair comparison with Gojay, which does
-			// not coerce strings to valid UTF-8 and doesn't
-			// escape HTML characters either.
-			// None of the string fields of the SimplePayload
-			// type contains HTML characters nor invalid UTF-8
-			// byte sequences, so this is fine.
-			if err := enc.Encode(sp, &buf, NoUTF8Coercion(), NoHTMLEscaping()); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(buf.Len()))
-			buf.Reset()
-		}
-	})
+	benchMarshal(b, sp)
 }
 
-func BenchmarkComplexPayload(b *testing.B) {
-	type y struct {
-		X string `json:"x"`
-	}
-	type x struct {
-		A  y `json:"a"`
-		B1 *y
-		B2 *y
-		C  []string     `json:"c"`
-		D  []int        `json:"d"`
-		E  []bool       `json:"e"`
-		F  []float32    `json:"f,omitempty"`
-		G  []*uint      `json:"g"`
-		H  [3]string    `json:"h"`
-		I  [1]int       `json:"i,omitempty"`
-		J  [0]bool      `json:"j"`
-		K  []byte       `json:"k"`
-		L  []*int       `json:"l"`
-		M1 []y          `json:"m1"`
-		M2 *[]y         `json:"m2"`
-		N  []*y         `json:"n"`
-		O1 [3]*int      `json:"o1"`
-		O2 *[3]*bool    `json:"o2,omitempty"`
-		P  [3]*y        `json:"p"`
-		Q  [][]int      `json:"q"`
-		R  [2][2]string `json:"r"`
-	}
-	enc, err := NewEncoder(reflect.TypeOf(x{}))
-	if err != nil {
-		b.Fatal(err)
-	}
-	if err := enc.Compile(); err != nil {
-		b.Fatal(err)
-	}
-	k := make([]byte, 32)
-	if _, err := rand.Read(k); err != nil {
-		b.Fatal(err)
-	}
-	var (
-		l1, l2 = 0, 42
-		m1, m2 = y{X: "Loreum"}, y{}
-	)
-	xx := &x{
-		A:  y{X: "Loreum"},
-		B1: nil,
-		B2: &y{X: "Ipsum"},
-		C:  []string{"one", "two", "three"},
-		D:  []int{1, 2, 3},
-		E:  []bool{},
-		H:  [3]string{"alpha", "beta", "gamma"},
-		I:  [1]int{42},
-		K:  k,
-		L:  []*int{&l1, &l2, nil},
-		M1: []y{m1, m2},
-		N:  []*y{&m1, &m2, nil},
-		O1: [3]*int{&l1, &l2, nil},
-		P:  [3]*y{&m1, &m2, nil},
-		Q:  [][]int{{1, 2}, {3, 4}},
-		R:  [2][2]string{{"a", "b"}, {"c", "d"}},
-	}
-	b.Run("encoding/json", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(xx)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jsoniter", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(xx)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jettison", func(b *testing.B) {
-		var buf bytes.Buffer
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(xx, &buf); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(buf.Len()))
-			buf.Reset()
-		}
-	})
+func BenchmarkComplex(b *testing.B) {
+	benchMarshal(b, xx)
 }
 
-func BenchmarkInterface(b *testing.B) {
-	s := "Loreum"
-	var iface interface{} = s
-	enc, err := NewEncoder(reflect.TypeOf(iface))
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Run("encoding/json", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(iface)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jsoniter", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(iface)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jettison", func(b *testing.B) {
-		var buf bytes.Buffer
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(iface, &buf); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(buf.Len()))
-			buf.Reset()
-		}
-	})
+func BenchmarkCodeMarshal(b *testing.B) {
+	// Taken from the encoding/json package.
+	x := codeInit(b)
+	benchMarshal(b, x)
 }
 
 func BenchmarkMap(b *testing.B) {
-	m := map[string]int{
-		"a": 1,
-		"b": 2,
-		"c": 3,
+	if testing.Short() {
+		b.SkipNow()
 	}
-	b.Run("encoding/json", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := json.Marshal(m)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jsoniter", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			bts, err := jsoniterStd.Marshal(m)
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(len(bts)))
-		}
-	})
-	b.Run("jettison", func(b *testing.B) {
-		enc, err := NewEncoder(reflect.TypeOf(m))
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.Run("sort", benchMap(enc, m))
-		b.Run("nosort", benchMap(enc, m, UnsortedMap()))
-	})
+	m := map[string]int{
+		"Cassianus": 1,
+		"Ludovicus": 42,
+		"Flavius":   8990,
+		"Baldwin":   345,
+		"Agapios":   -43,
+		"Liberia":   0,
+	}
+	benchMarshal(b, m)
 }
 
-func benchMap(enc *Encoder, m map[string]int, opts ...Option) func(b *testing.B) {
-	var buf bytes.Buffer
-	return func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(&m, &buf, opts...); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(buf.Len()))
-			buf.Reset()
-		}
+func BenchmarkDuration(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
+	d := 1337 * time.Second
+	benchMarshal(b, d)
+}
+
+func BenchmarkDurationFormat(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
+	d := 32*time.Hour + 56*time.Minute + 25*time.Second
+	for _, f := range []DurationFmt{
+		DurationString,
+		DurationMinutes,
+		DurationSeconds,
+		DurationMicroseconds,
+		DurationMilliseconds,
+		DurationNanoseconds,
+	} {
+		benchMarshalOpts(b, f.String(), d, DurationFormat(f))
 	}
 }
 
@@ -308,68 +116,7 @@ func BenchmarkTime(b *testing.B) {
 		b.SkipNow()
 	}
 	t := time.Now()
-	enc, err := NewEncoder(reflect.TypeOf(t))
-	if err != nil {
-		b.Fatal(err)
-	}
-	cases := []struct {
-		name string
-		opt  Option
-	}{
-		{"layout", TimeLayout(defaultTimeLayout)},
-		{"timestamp", UnixTimestamp()},
-	}
-	for _, c := range cases {
-		var buf bytes.Buffer
-		c := c
-		b.Run(c.name, func(b *testing.B) {
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if err := enc.Encode(&t, &buf, c.opt); err != nil {
-					b.Fatal(err)
-				}
-				b.SetBytes(int64(buf.Len()))
-				buf.Reset()
-			}
-		})
-	}
-}
-
-func BenchmarkDuration(b *testing.B) {
-	if testing.Short() {
-		b.SkipNow()
-	}
-	formats := []DurationFmt{
-		DurationString,
-		DurationMinutes,
-		DurationSeconds,
-		DurationMicroseconds,
-		DurationMilliseconds,
-		DurationNanoseconds,
-	}
-	d := 1337 * time.Second
-	enc, err := NewEncoder(reflect.TypeOf(d))
-	if err != nil {
-		b.Fatal(err)
-	}
-	for _, fmt := range formats {
-		var (
-			buf  bytes.Buffer
-			name = fmt.String()
-			opts = []Option{DurationFormat(fmt)}
-		)
-		b.Run(name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				if err := enc.Encode(&d, &buf, opts...); err != nil {
-					b.Fatal(err)
-				}
-				b.SetBytes(int64(buf.Len()))
-				buf.Reset()
-			}
-		})
-	}
+	benchMarshal(b, t)
 }
 
 func BenchmarkStringEscaping(b *testing.B) {
@@ -378,57 +125,31 @@ func BenchmarkStringEscaping(b *testing.B) {
 	}
 	s := "<ŁØŘ€M ƗƤŞỮM ĐØŁØŘ ŞƗŦ ΔM€Ŧ>"
 
-	enc, err := NewEncoder(reflect.TypeOf(s))
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Run("Full",
-		benchEscaping(enc, s))
-	b.Run("NoUTF8Coercion",
-		benchEscaping(enc, s, NoUTF8Coercion()))
-	b.Run("NoHTMLEscaping",
-		benchEscaping(enc, s, NoHTMLEscaping()))
-	b.Run("NoUTF8Coercion/NoHTMLEscaping",
-		benchEscaping(enc, s, NoUTF8Coercion(), NoHTMLEscaping()))
-	b.Run("NoStringEscaping",
-		benchEscaping(enc, s, NoStringEscaping()))
-}
-
-//nolint:unparam
-func benchEscaping(enc *Encoder, s string, opts ...Option) func(b *testing.B) {
-	var buf bytes.Buffer
-	return func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if err := enc.Encode(s, &buf, opts...); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(buf.Len()))
-			buf.Reset()
-		}
-	}
+	benchMarshalOpts(b, "Full", s)
+	benchMarshalOpts(b, "NoUTF8Coercion", s, NoUTF8Coercion())
+	benchMarshalOpts(b, "NoHTMLEscaping", s, NoHTMLEscaping())
+	benchMarshalOpts(b, "NoUTF8Coercion/NoHTMLEscaping", s, NoUTF8Coercion(), NoHTMLEscaping())
+	benchMarshalOpts(b, "NoStringEscaping", s, NoStringEscaping())
 }
 
 type (
-	jsonBM    struct{}
-	textBM    struct{}
-	jetiBM    struct{}
-	jetiCtxBM struct{}
+	jsonbm    struct{}
+	textbm    struct{}
+	jetibm    struct{}
+	jetictxbm struct{}
 )
 
-const loreumipsum = "Lorem ipsum dolor sit amet"
+var (
+	loreumipsum  = "Lorem ipsum dolor sit amet"
+	loreumipsumQ = strconv.Quote(loreumipsum)
+)
 
-func (jsonBM) MarshalJSON() ([]byte, error) { return []byte(`"` + loreumipsum + `"`), nil }
-func (textBM) MarshalText() ([]byte, error) { return []byte(loreumipsum), nil }
+func (jsonbm) MarshalJSON() ([]byte, error)          { return []byte(loreumipsumQ), nil }
+func (textbm) MarshalText() ([]byte, error)          { return []byte(loreumipsum), nil }
+func (jetibm) AppendJSON(dst []byte) ([]byte, error) { return append(dst, loreumipsum...), nil }
 
-func (jetiBM) WriteJSON(w Writer) error {
-	_, err := w.WriteString(loreumipsum)
-	return err
-}
-func (jetiCtxBM) WriteJSONContext(_ context.Context, w Writer) error {
-	_, err := w.WriteString(loreumipsum)
-	return err
+func (jetictxbm) AppendJSONContext(_ context.Context, dst []byte) ([]byte, error) {
+	return append(dst, loreumipsum...), nil
 }
 
 func BenchmarkMarshaler(b *testing.B) {
@@ -440,26 +161,86 @@ func BenchmarkMarshaler(b *testing.B) {
 		impl interface{}
 		opts []Option
 	}{
-		{"json", jsonBM{}, nil},
-		{"text", textBM{}, nil},
-		{"jettison", jetiBM{}, nil},
-		{"jettisonCtx", jetiCtxBM{}, []Option{WithContext(context.Background())}},
+		{"json", jsonbm{}, nil},
+		{"text", textbm{}, nil},
+		{"append", jetibm{}, nil},
+		{"appendctx", jetictxbm{}, []Option{WithContext(context.Background())}},
 	} {
-		bb := bb
-		b.Run(bb.name, func(b *testing.B) {
-			enc, err := NewEncoder(reflect.TypeOf(bb.impl))
+		benchMarshalOpts(b, bb.name, bb.impl, bb.opts...)
+	}
+}
+
+func codeInit(b *testing.B) *codeResponse {
+	f, err := os.Open("testdata/code.json.gz")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		b.Fatal(err)
+	}
+	data, err := ioutil.ReadAll(gz)
+	if err != nil {
+		b.Fatal(err)
+	}
+	codeJSON := data
+
+	var resp codeResponse
+	if err := json.Unmarshal(codeJSON, &resp); err != nil {
+		b.Fatalf("unmarshal code.json: %s", err)
+	}
+	if data, err = Marshal(&resp); err != nil {
+		b.Fatalf("marshal code.json: %s", err)
+	}
+	if !bytes.Equal(data, codeJSON) {
+		b.Logf("different lengths: %d - %d", len(data), len(codeJSON))
+
+		for i := 0; i < len(data) && i < len(codeJSON); i++ {
+			if data[i] != codeJSON[i] {
+				b.Logf("re-marshal: changed at byte %d", i)
+				b.Logf("old: %s", string(codeJSON[i-10:i+10]))
+				b.Logf("new: %s", string(data[i-10:i+10]))
+				break
+			}
+		}
+		b.Fatal("re-marshal code.json: different result")
+	}
+	return &resp
+}
+
+func benchMarshalOpts(b *testing.B, name string, x interface{}, opts ...Option) {
+	b.Run(name, func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			bts, err := MarshalOpts(x, opts...)
 			if err != nil {
 				b.Fatal(err)
 			}
-			var buf bytes.Buffer
+			b.SetBytes(int64(len(bts)))
+		}
+	})
+}
+
+func benchMarshal(b *testing.B, x interface{}) {
+	for _, bb := range []struct {
+		name string
+		fn   marshalFunc
+	}{
+		{"standard", json.Marshal},
+		{"jsoniter", jsoniterCfg.Marshal},
+		{"segmentj", segmentj.Marshal},
+		{"jettison", Marshal},
+	} {
+		bb := bb
+		b.Run(bb.name, func(b *testing.B) {
 			b.ReportAllocs()
-			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := enc.Encode(bb.impl, &buf, bb.opts...); err != nil {
-					b.Fatal(err)
+				bts, err := bb.fn(x)
+				if err != nil {
+					b.Error(err)
 				}
-				b.SetBytes(int64(buf.Len()))
-				buf.Reset()
+				b.SetBytes(int64(len(bts)))
 			}
 		})
 	}

@@ -22,6 +22,7 @@ done
 
 if [ "$CHARTS" == "true" ]; then
    echo -e "\nGenerating charts..."
+
    # Convert benchmark statistics to CSV and
    # transform the output to JSON-formatted
    # data tables interpretable by Google Charts.
@@ -30,8 +31,9 @@ if [ "$CHARTS" == "true" ]; then
 
    # Generate chart images and apply trim/border
    # operations using ImageMagick.
-   node tools/charts/index.js -f .benchstats.json -d images -n SimplePayload,ComplexPayload,Interface,Map
-   mogrify -trim -bordercolor white -border 30x15 images/*.png
+   cd tools/charts && npm --silent install && cd ../..
+   node tools/charts/index.js -f .benchstats.json -d images/benchmarks -n Simple,Complex,CodeMarshal
+   mogrify -trim -bordercolor white -border 30x30 images/benchmarks/*.png
 fi
 
 rm -f .benchruns

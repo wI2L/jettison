@@ -17,7 +17,7 @@ prog
         return value.split(',')
     })
 
-prog.version('0.0.1')
+prog.version('0.1.0')
 prog.parse(process.argv)
 
 // createChart creates and exports a Google Bar Chart
@@ -94,9 +94,9 @@ var data = JSON.parse(file)
 // Iterate over all benchmarks and create the
 // chart only if it was requested through the
 // command-line parameters.
-for (var key in data) {
+Object.keys(data).forEach(function (key) {
     if (!prog.names.includes(key)) {
-        continue
+        return
     }
     const pageFile = path.join(__dirname, 'jsdom.html')
 
@@ -106,8 +106,8 @@ for (var key in data) {
         pretendToBeVisual: true
     }).then(dom => {
         createBarChart(dom, key, data[key], {
-            width: 580,
-            height: 400,
+            width: 980,
+            height: 675,
             vAxis: {
                 format: '',
                 gridlines: {
@@ -119,10 +119,9 @@ for (var key in data) {
             },
             hAxis: {
                 textStyle: {
-                    bold: true,
                     fontName: 'Lato'
                 }
             }
         })
     })
-}
+})

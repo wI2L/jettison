@@ -4,8 +4,22 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.5.0] - 2020-02-02
+#### Refactor of entire project.
+This include the following changes, but not limited to:
+
+- Remove the `Encoder` type to simplify the usage of the library and stick more closely to the design of `encoding/json`
+- Reduce the number of closures used. This improves readability of stacktraces and performance profiles.
+- Improve the marshaling performances of many types.
+- Add support for marshaling `json.RawMessage` values.
+- Add new options `DenyList`, `NoNumberValidation`, `NoCompact`, and rename some others.
+- Replace the `Marshaler` and `MarshalerCtx` interfaces by `AppendMarshaler` and `AppendMarshalerCtx` to follow the new "append" model.
+- Remove the `IntegerBase` option, which didn't worked properly with the `string` JSON tag.
+
+> Some of the improvements have been inspired by the **github.com/segmentio/encoding** project.
+
 ## [v0.4.1] - 2019-10-23
-- Fix unsafe misuses reported by go vet and the new `-d=checkptr` cmd/compile flag introduced in the Go1.14 development tree by Matthew Dempsky. The issues were mostly related to invalid arithmetic operations and dereferences.
+- Fix unsafe misuses reported by go vet and the new `-d=checkptr` cmd/compile flag introduced in the Go1.14 development tree by *Matthew Dempsky*. The issues were mostly related to invalid arithmetic operations and dereferences.
 - Fix map key types precedence order during marshaling. Keys of any string type are used directly instead of the `MarshalText` method, if the types also implement the `encoding.TextMarshaler` interface.
 
 ## [v0.4.0] - 2019-10-18
@@ -36,6 +50,7 @@ All notable changes to this project are documented in this file.
 ## [v0.1.0] - 2019-08-30
 Initial realease.
 
+[v0.5.0]: https://github.com/wI2L/jettison/compare/v0.4.1...v0.5.0
 [v0.4.1]: https://github.com/wI2L/jettison/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/wI2L/jettison/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/wI2L/jettison/compare/v0.3.0...v0.3.1
