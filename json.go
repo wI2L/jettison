@@ -9,9 +9,9 @@ import (
 
 // AppendMarshaler is a variant of the json.Marshaler
 // interface, implemented by types that can append a
-// valid JSON representation of themselves to a buffer.
-// If a type implements both interfaces, this one will
-// be used in priority by this package.
+// valid and compact JSON representation of themselves
+// to a buffer. If a type implements both interfaces,
+// this one will be used in priority by the package.
 type AppendMarshaler interface {
 	AppendJSON([]byte) ([]byte, error)
 }

@@ -85,7 +85,7 @@ os.Stdout.Write(b)
 
 ### Advanced
 
-If more control over the encoding behavior is required, use the `MarshalOpts`. The second parameter is variadic and accept a list of functional opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) described below:
+If more control over the encoding behavior is required, use the `MarshalOpts` function instead. The second parameter is variadic and accept a list of functional opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) described below:
 
 - **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
 - **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
@@ -117,90 +117,90 @@ go test -bench=. | prettybench
 
 ### Results `-short`
 
-The benchmarks has been run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a machine with the following specs:
+These benchmarks were run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a MacBook Pro 15" (late-2013) with the following specs:
 ```
-OS:  Ubuntu 16.04.6 LTS
-CPU: Intel(R) Core(TM) i5-6600 CPU @ 3.30GHz
+OS:  macOS Mojave (10.14.6)
+CPU: 2.6 GHz Intel Core i7
 Mem: 16GB
-Go:  go version go1.13.4 linux/amd64
+Go:  go version go1.13.7 darwin/amd64
 Tag: v0.5.0
 ```
 
 <details><summary>Stats</summary><br><pre>
 name                    time/op
-Simple/standard-4          662ns ± 1%
-Simple/jsoniter-4          724ns ± 2%
-Simple/segmentj-4          377ns ± 1%
-Simple/jettison-4          475ns ± 1%
-Complex/standard-4        14.7µs ± 1%
-Complex/jsoniter-4        15.1µs ± 1%
-Complex/segmentj-4        10.5µs ± 1%
-Complex/jettison-4        7.25µs ± 1%
-CodeMarshal/standard-4    7.44ms ± 1%
-CodeMarshal/jsoniter-4    8.42ms ± 1%
-CodeMarshal/segmentj-4    5.77ms ± 1%
-CodeMarshal/jettison-4    6.40ms ± 1%
+Simple/standard-8          670ns ± 2%
+Simple/jsoniter-8          776ns ± 1%
+Simple/segmentj-8          378ns ± 3%
+Simple/jettison-8          472ns ± 1%
+Complex/standard-8        13.9µs ± 1%
+Complex/jsoniter-8        14.2µs ± 1%
+Complex/segmentj-8        9.80µs ± 1%
+Complex/jettison-8        6.88µs ± 1%
+CodeMarshal/standard-8    7.29ms ± 0%
+CodeMarshal/jsoniter-8    8.28ms ± 1%
+CodeMarshal/segmentj-8    5.60ms ± 1%
+CodeMarshal/jettison-8    6.00ms ± 1%
 
 name                    speed
-Simple/standard-4        204MB/s ± 1%
-Simple/jsoniter-4        187MB/s ± 2%
-Simple/segmentj-4        358MB/s ± 1%
-Simple/jettison-4        284MB/s ± 1%
-Complex/standard-4      58.0MB/s ± 1%
-Complex/jsoniter-4      54.4MB/s ± 1%
-Complex/segmentj-4      82.1MB/s ± 1%
-Complex/jettison-4       118MB/s ± 1%
-CodeMarshal/standard-4   261MB/s ± 1%
-CodeMarshal/jsoniter-4   230MB/s ± 1%
-CodeMarshal/segmentj-4   336MB/s ± 1%
-CodeMarshal/jettison-4   303MB/s ± 1%
+Simple/standard-8        202MB/s ± 1%
+Simple/jsoniter-8        174MB/s ± 1%
+Simple/segmentj-8        357MB/s ± 3%
+Simple/jettison-8        286MB/s ± 1%
+Complex/standard-8      61.3MB/s ± 1%
+Complex/jsoniter-8      57.8MB/s ± 1%
+Complex/segmentj-8      87.9MB/s ± 1%
+Complex/jettison-8       124MB/s ± 1%
+CodeMarshal/standard-8   266MB/s ± 0%
+CodeMarshal/jsoniter-8   234MB/s ± 1%
+CodeMarshal/segmentj-8   346MB/s ± 1%
+CodeMarshal/jettison-8   323MB/s ± 1%
 
 name                    alloc/op
-Simple/standard-4           144B ± 0%
-Simple/jsoniter-4           152B ± 0%
-Simple/segmentj-4           144B ± 0%
-Simple/jettison-4           144B ± 0%
-Complex/standard-4        4.76kB ± 0%
-Complex/jsoniter-4        4.64kB ± 0%
-Complex/segmentj-4        3.25kB ± 0%
-Complex/jettison-4        1.38kB ± 0%
-CodeMarshal/standard-4    1.96MB ± 1%
-CodeMarshal/jsoniter-4    2.00MB ± 3%
-CodeMarshal/segmentj-4    2.00MB ± 0%
-CodeMarshal/jettison-4    2.00MB ± 0%
+Simple/standard-8           144B ± 0%
+Simple/jsoniter-8           152B ± 0%
+Simple/segmentj-8           144B ± 0%
+Simple/jettison-8           144B ± 0%
+Complex/standard-8        4.76kB ± 0%
+Complex/jsoniter-8        4.65kB ± 0%
+Complex/segmentj-8        3.25kB ± 0%
+Complex/jettison-8        1.38kB ± 0%
+CodeMarshal/standard-8    1.96MB ± 1%
+CodeMarshal/jsoniter-8    2.00MB ± 3%
+CodeMarshal/segmentj-8    1.96MB ± 2%
+CodeMarshal/jettison-8    1.97MB ± 1%
 
 name                    allocs/op
-Simple/standard-4           1.00 ± 0%
-Simple/jsoniter-4           2.00 ± 0%
-Simple/segmentj-4           1.00 ± 0%
-Simple/jettison-4           1.00 ± 0%
-Complex/standard-4          96.0 ± 0%
-Complex/jsoniter-4          86.0 ± 0%
-Complex/segmentj-4          64.0 ± 0%
-Complex/jettison-4          15.0 ± 0%
-CodeMarshal/standard-4      1.00 ± 0%
-CodeMarshal/jsoniter-4      2.00 ± 0%
-CodeMarshal/segmentj-4      1.00 ± 0%
-CodeMarshal/jettison-4      1.00 ± 0%
+Simple/standard-8           1.00 ± 0%
+Simple/jsoniter-8           2.00 ± 0%
+Simple/segmentj-8           1.00 ± 0%
+Simple/jettison-8           1.00 ± 0%
+Complex/standard-8          96.0 ± 0%
+Complex/jsoniter-8          86.0 ± 0%
+Complex/segmentj-8          64.0 ± 0%
+Complex/jettison-8          15.0 ± 0%
+CodeMarshal/standard-8      1.00 ± 0%
+CodeMarshal/jsoniter-8      2.00 ± 0%
+CodeMarshal/segmentj-8      1.00 ± 0%
+CodeMarshal/jettison-8      1.00 ± 0%
 </pre></details>
 
 #### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L49)]
 
 Basic payload with fields of type `string`, `int` and `bool`.
 
-<img src="images/benchmarks/simple.png" height="400px" width="auto" alt="Simple Benchmark Graph">
+![Simple Benchmark Graph](./images/benchmarks/simple.svg)
 
 #### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L64)]
 
 Large payload with a variety of composite Go types, such as `struct`, `map`, `interface`, multi-dimensions `array` and `slice`, with pointer and non-pointer value types.
 
-<img src="images/benchmarks/complex.png" height="400px" width="auto" alt="Complex Benchmark Graph">
+![Complex Benchmark Graph](./images/benchmarks/complex.svg)
 
 #### CodeMarshal [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L68)]
 
 Borrowed from the `encoding/json` tests. See [testdata/code.json.gz](testdata/code.json.gz).
 
-<img src="images/benchmarks/code-marshal.png" height="400px" width="auto" alt="CodeMarshal Benchmark Graph">
+![CodeMarshal Benchmark Graph](./images/benchmarks/code-marshal.svg)
 
 ## Credits
 

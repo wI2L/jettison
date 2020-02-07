@@ -215,8 +215,8 @@ func WithContext(ctx context.Context) Option {
 // used in the final JSON payload.
 // See DenyFields documentation for more information
 // regarding joint use with this option.
-func AllowList(list []string) Option {
-	m := fieldListToSet(list)
+func AllowList(fields []string) Option {
+	m := fieldListToSet(fields)
 	return func(o *encOpts) {
 		o.allowList = m
 	}

@@ -9,6 +9,7 @@ const path = require('path')
 const prog = require('commander')
 const util = require('util')
 const deca = require('decamelize')
+const SVGO = require('svgo')
 
 prog
     .option('-f, --input <file>', 'json-formatted benchmark data file')
@@ -17,7 +18,7 @@ prog
         return value.split(',')
     })
 
-prog.version('0.1.0')
+prog.version('0.2.0')
 prog.parse(process.argv)
 
 // createChart creates and exports a Google Bar Chart
@@ -26,16 +27,24 @@ prog.parse(process.argv)
 // two-dimensional array where each row represents a
 // bar in the chart.
 function createBarChart (dom, name, data, opts) {
+    var head = dom.window.document.getElementsByTagName('head')[0]
+    var func = head.insertBefore
+
+    // Prevent call to Google Font API.
+    head.insertBefore = function (el, ref) {
+        if (el.href && el.href.indexOf('//fonts.googleapis.com/css?family=Input') > -1) {
+            return
+        }
+        func.call(head, el, ref)
+    }
     // Add an event listener to draw the chart once
     // the DOM is fully loaded.
     dom.window.addEventListener('DOMContentLoaded', function () {
         const g = dom.window.google
 
-        // Load the Google Visualization API and
-        // the corechart package.
-        // Use version 45, because 'current' has
-        // issues when rendering Y-axis labels.
-        g.charts.load('45', {
+        // Load the Google Visualization
+        // API and the corechart package.
+        g.charts.load('45.2', {
             packages: ['corechart', 'bar']
         })
         g.charts.setOnLoadCallback(function () {
@@ -44,23 +53,43 @@ function createBarChart (dom, name, data, opts) {
     })
 }
 
-// exportChart exports the PNG image of the chart
-// to the current working directory. The file name
-// is a decamelized version of name using the hyphen
-// character as separator, in lowercase.
-function exportChart (chart, name) {
-    var filename = util.format('%s.png',
+// exportChartAsSVG exports the SVG of the chart to
+// the current working directory. The file name is a
+// decamelized version of name using the hyphen char
+// as separator, in lowercase.
+function exportChartAsSVG (e, name) {
+    var filename = util.format('%s.svg',
         path.join(prog.directory, deca(name, '-'))
     )
-    var img = chart.getImageURI().replace(
-        /^data:image\/png;base64,/, ''
-    )
-    try {
-        return fs.writeFileSync(filename, img, 'base64')
-    } catch (err) {
-        console.error('cannot write %s chart: %s', filename, err)
-    }
-    console.log('chart %s exported', filename)
+    var svgEl = e.getElementsByTagName('svg')[0]
+    var svg = htmlToElement(svgEl.outerHTML)
+
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    svg.setAttribute('version', '1.1')
+
+    var svgo = new SVGO({
+        plugins: [{
+            sortAttrs: true
+        }, {
+            removeAttrs: {
+                attrs: '(clip-path|aria-label|overflow)'
+            }
+        }]
+    })
+    svgo.optimize(svg.outerHTML, {}).then(function (result) {
+        try {
+            return fs.writeFileSync(filename, result.data)
+        } catch (err) {
+            console.error('cannot write svg chart %s: %s', filename, err)
+        }
+    })
+}
+
+function htmlToElement (html) {
+    const d = (new JSDOM('...')).window.document
+    var t = d.createElement('template')
+    t.innerHTML = html.trim()
+    return t.content.firstChild
 }
 
 function drawBarChart (dom, name, data, opts) {
@@ -81,7 +110,7 @@ function drawBarChart (dom, name, data, opts) {
     // Setup a callback that exports the chart as
     // a PNG image when it has finished drawing.
     g.visualization.events.addListener(c, 'ready', function () {
-        exportChart(c, name)
+        exportChartAsSVG(e, name)
     })
     c.draw(dt, opts)
 }
@@ -106,20 +135,27 @@ Object.keys(data).forEach(function (key) {
         pretendToBeVisual: true
     }).then(dom => {
         createBarChart(dom, key, data[key], {
-            width: 980,
-            height: 675,
+            width: 700,
+            height: 400,
+            chartArea: {
+                left: 100,
+                top: 50,
+                width: '70%',
+                height: '75%'
+            },
             vAxis: {
                 format: '',
                 gridlines: {
                     count: 5
                 },
                 minorGridlines: {
-                    count: 1
+                    count: 2
                 }
             },
             hAxis: {
                 textStyle: {
-                    fontName: 'Lato'
+                    bold: true,
+                    fontName: 'Input'
                 }
             }
         })

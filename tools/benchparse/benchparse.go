@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	flagMem    = flag.Bool("omit-mem", false, "omit B/op stat")
-	flagAllocs = flag.Bool("omit-allocs", false, "omit allocs/op stat")
-	flagInput  = flag.String("in", "benchstats.csv", "csv-formatted benchstat file")
-	flagOutput = flag.String("out", "gc-benchstats.json", "json-formatted data table file")
+	omitMem       = flag.Bool("omit-mem", false, "omit B/op stat")
+	omitAllocs    = flag.Bool("omit-allocs", false, "omit allocs/op stat")
+	omitBandwidth = flag.Bool("omit-bandwidth", false, "omit MB/s stat")
+	flagInput     = flag.String("in", "benchstats.csv", "csv-formatted benchstat file")
+	flagOutput    = flag.String("out", "benchstats.json", "json-formatted data table file")
 )
 
 func usage() {
@@ -142,22 +143,29 @@ func transform(stats set) gcDataTables {
 				values[s.Name] = append(values[s.Name], s.Name)
 			}
 			switch s.Unit {
+			case "MB/s":
+				if *omitBandwidth {
+					continue L
+				}
 			case "B/op": // total memory allocated
-				if *flagMem {
+				if *omitMem {
 					continue L
 				}
 			case "allocs/op": // number of allocs
-				if *flagAllocs {
+				if *omitAllocs {
 					continue L
 				}
 			}
 			values[s.Name] = append(values[s.Name], s.Value)
 		}
-		data[bname] = append(data[bname], []interface{}{"Name", "ns/op", "MB/s"})
-		if !*flagMem {
+		data[bname] = append(data[bname], []interface{}{"Name", "ns/op"})
+		if !*omitBandwidth {
+			data[bname][0] = append(data[bname][0], "MB/s")
+		}
+		if !*omitMem {
 			data[bname][0] = append(data[bname][0], "B/op")
 		}
-		if !*flagAllocs {
+		if !*omitAllocs {
 			data[bname][0] = append(data[bname][0], "allocs/op")
 		}
 		for _, v := range values {

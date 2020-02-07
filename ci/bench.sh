@@ -27,13 +27,12 @@ if [ "$CHARTS" == "true" ]; then
    # transform the output to JSON-formatted
    # data tables interpretable by Google Charts.
    "$(go env GOPATH)/bin/benchstat" -csv -norange .benchruns > .benchstats.csv
-   go run tools/benchparse/benchparse.go -in .benchstats.csv -out .benchstats.json -omit-allocs
+   go run tools/benchparse/benchparse.go -in .benchstats.csv -out .benchstats.json -omit-bandwidth -omit-allocs
 
    # Generate chart images and apply trim/border
    # operations using ImageMagick.
-   cd tools/charts && npm --silent install && cd ../..
+   cd tools/charts && npm --silent --no-audit install && cd ../..
    node tools/charts/index.js -f .benchstats.json -d images/benchmarks -n Simple,Complex,CodeMarshal
-   mogrify -trim -bordercolor white -border 30x30 images/benchmarks/*.png
 fi
 
 rm -f .benchruns
