@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"unsafe"
@@ -357,9 +359,11 @@ func encodeMap(
 		dst, err = encodeSortedMap(it, dst, opts, ki, vi, ml)
 	}
 	hiterPool.Put(it)
-	dst = append(dst, '}')
 
-	return dst, err
+	if err != nil {
+		return dst, err
+	}
+	return append(dst, '}'), err
 }
 
 // encodeUnsortedMap appends the elements of the map
@@ -376,13 +380,13 @@ func encodeUnsortedMap(
 		if n != 0 {
 			dst = append(dst, ',')
 		}
-		// Encode pair's key.
+		// Encode entry's key.
 		if dst, err = ki(it.key, dst, opts); err != nil {
 			return dst, err
 		}
 		dst = append(dst, ':')
 
-		// Encode pair's value.
+		// Encode entry's value.
 		if dst, err = vi(it.val, dst, opts); err != nil {
 			return dst, err
 		}
@@ -448,12 +452,167 @@ func encodeSortedMap(
 	}
 	// The map elements must be released before
 	// the buffer, because each k/v pair holds
-	// two sublices that point to the buffer's
+	// two sublices that points to the buffer's
 	// backing array.
 	releaseMapElems(mel)
 	bufferPool.Put(buf)
 
 	return dst, err
+}
+
+// encodeSyncMap appends the elements of a sync.Map pointed
+// to by p to dst and returns the extended buffer.
+// This function replicates the behavior of encoding Go maps,
+// by returning an error for keys that are not of type string
+// or int, or that does not implement encoding.TextMarshaler.
+func encodeSyncMap(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
+	sm := (*sync.Map)(p)
+	dst = append(dst, '{')
+
+	// The sync.Map type does not have a Len() method to
+	// determine if it has no entries, to bail out early,
+	// so we just range over it to encode all available
+	// entries.
+	// If an error arises while encoding a key or a value,
+	// the error is stored and the method used by Range()
+	// returns false to stop the map's iteration.
+	var err error
+	if opts.flags.has(unsortedMap) {
+		dst, err = encodeUnsortedSyncMap(sm, dst, opts)
+	} else {
+		dst, err = encodeSortedSyncMap(sm, dst, opts)
+	}
+	if err != nil {
+		return dst, err
+	}
+	return append(dst, '}'), nil
+}
+
+// encodeUnsortedSyncMap is similar to encodeUnsortedMap
+// but operates on a sync.Map type instead of a Go map.
+func encodeUnsortedSyncMap(sm *sync.Map, dst []byte, opts encOpts) ([]byte, error) {
+	var (
+		n   int
+		err error
+	)
+	sm.Range(func(key, value interface{}) bool {
+		if n != 0 {
+			dst = append(dst, ',')
+		}
+		// Encode the key.
+		if dst, err = appendSyncMapKey(dst, key, opts); err != nil {
+			return false
+		}
+		dst = append(dst, ':')
+
+		// Encode the value.
+		if dst, err = appendJSON(dst, value, opts); err != nil {
+			return false
+		}
+		n++
+		return true
+	})
+	return dst, err
+}
+
+// encodeSortedSyncMap is similar to encodeSortedMap
+// but operates on a sync.Map type instead of a Go map.
+func encodeSortedSyncMap(sm *sync.Map, dst []byte, opts encOpts) ([]byte, error) {
+	var (
+		off int
+		err error
+		buf = cachedBuffer()
+		mel *mapElems
+	)
+	if v := mapElemsPool.Get(); v != nil {
+		mel = v.(*mapElems)
+	} else {
+		mel = &mapElems{s: make([]kv, 0)}
+	}
+	sm.Range(func(key, value interface{}) bool {
+		kv := kv{}
+
+		// Encode the key and store the buffer
+		// portion to use during the later sort.
+		if buf.B, err = appendSyncMapKey(buf.B, key, opts); err != nil {
+			return false
+		}
+		// Omit quotes of keys.
+		kv.key = buf.B[off+1 : len(buf.B)-1]
+
+		// Add separator after key.
+		buf.B = append(buf.B, ':')
+
+		// Encode the value and store the buffer
+		// portion corresponding to the semicolon
+		// delimited key/value pair.
+		if buf.B, err = appendJSON(buf.B, value, opts); err != nil {
+			return false
+		}
+		kv.keyval = buf.B[off:len(buf.B)]
+		mel.s = append(mel.s, kv)
+		off = len(buf.B)
+
+		return true
+	})
+	if err == nil {
+		// Sort map entries by key in
+		// lexicographical order.
+		sort.Sort(mel)
+
+		// Append sorted comma-delimited k/v
+		// pairs to the given buffer.
+		for i, kv := range mel.s {
+			if i != 0 {
+				dst = append(dst, ',')
+			}
+			dst = append(dst, kv.keyval...)
+		}
+	}
+	releaseMapElems(mel)
+	bufferPool.Put(buf)
+
+	return dst, err
+}
+
+func appendSyncMapKey(dst []byte, key interface{}, opts encOpts) ([]byte, error) {
+	if key == nil {
+		return dst, errors.New("unsupported nil key in sync.Map")
+	}
+	kt := reflect.TypeOf(key)
+	var (
+		isStr = isString(kt)
+		isInt = isInteger(kt)
+		isTxt = kt.Implements(textMarshalerType)
+	)
+	if !isStr && !isInt && !isTxt {
+		return dst, fmt.Errorf("unsupported key of type %s in sync.Map", kt)
+	}
+	var err error
+
+	// Quotes the key if the type is not
+	// encoded with quotes by default.
+	quoted := !isStr && !isTxt
+
+	// Ensure map key precedence for keys of type
+	// string by using the encodeString function
+	// directly instead of the generic appendJSON.
+	if isStr {
+		dst, err = encodeString(unpackEface(key).word, dst, opts)
+		runtime.KeepAlive(key)
+	} else {
+		if quoted {
+			dst = append(dst, '"')
+		}
+		dst, err = appendJSON(dst, key, opts)
+	}
+	if err != nil {
+		return dst, err
+	}
+	if quoted {
+		dst = append(dst, '"')
+	}
+	return dst, nil
 }
 
 func encodeMarshaler(

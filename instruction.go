@@ -116,6 +116,8 @@ func newInstruction(t reflect.Type, canAddr, quoted bool) instruction {
 
 func newGoTypeInstr(t reflect.Type) instruction {
 	switch t {
+	case syncMapType:
+		return encodeSyncMap
 	case timeTimeType:
 		return encodeTime
 	case timeDurationType:

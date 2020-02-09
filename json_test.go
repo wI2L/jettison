@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
@@ -392,6 +393,113 @@ func TestByteSliceSizes(t *testing.T) {
 	}
 }
 
+// TestSortedSyncMap tests the marshaling
+// of a sorted sync.Map value.
+func TestSortedSyncMap(t *testing.T) {
+	var sm sync.Map
+
+	sm.Store(1, "one")
+	sm.Store("a", 42)
+	sm.Store("b", false)
+	sm.Store(mkvstrMarshaler("c"), -42)
+	sm.Store(mkrstrMarshaler("d"), true)
+	sm.Store(mkvintMarshaler(42), 1)
+	sm.Store(mkrintMarshaler(42), 2)
+
+	b, err := Marshal(&sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"1":"one","42":2,"MKVINT":1,"a":42,"b":false,"c":-42,"d":true}`
+
+	if !bytes.Equal(b, []byte(want)) {
+		t.Errorf("got %#q, want %#q", b, want)
+	}
+}
+
+// TestUnsortedSyncMap tests the marshaling
+// of an unsorted sync.Map value.
+func TestUnsortedSyncMap(t *testing.T) {
+	// entries maps each interface k/v
+	// pair to the string representation
+	// of the key in payload.
+	entries := map[string]struct {
+		key interface{}
+		val interface{}
+	}{
+		"1":      {1, "one"},
+		"a":      {"a", 42},
+		"b":      {"b", false},
+		"c":      {mkvstrMarshaler("c"), -42},
+		"d":      {mkrstrMarshaler("d"), true},
+		"MKVINT": {mkvintMarshaler(42), 1},
+		"42":     {mkrintMarshaler(42), 2},
+	}
+	var sm sync.Map
+	for _, e := range entries {
+		sm.Store(e.key, e.val)
+	}
+	bts, err := MarshalOpts(&sm, UnsortedMap())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := make(map[string]interface{})
+	if err := json.Unmarshal(bts, &m); err != nil {
+		t.Fatal(err)
+	}
+	// Unmarshaled map must contains exactly the
+	// number of entries added to the sync map.
+	if g, w := len(m), len(entries); g != w {
+		t.Errorf("invalid lengths: got %d, want %d", g, w)
+	}
+	for k, v := range m {
+		// Compare the marshaled representation
+		// of each value to avoid false-positive
+		// between integer and float types.
+		b1, err1 := json.Marshal(v)
+		b2, err2 := json.Marshal(entries[k].val)
+		if err1 != nil {
+			t.Fatal(err)
+		}
+		if err2 != nil {
+			t.Fatal(err2)
+		}
+		if !bytes.Equal(b1, b2) {
+			t.Errorf("for key %s: got %v, want %v", k, b1, b2)
+		}
+	}
+}
+
+// TestInvalidSyncMapKeys tests that marshaling a
+// sync.Map with unsupported key types returns an
+// error.
+func TestInvalidSyncMapKeys(t *testing.T) {
+	testInvalidSyncMapKeys(t, true)
+	testInvalidSyncMapKeys(t, false)
+}
+
+func testInvalidSyncMapKeys(t *testing.T, sorted bool) {
+	for _, f := range []func(sm *sync.Map){
+		func(sm *sync.Map) { sm.Store(false, nil) },
+		func(sm *sync.Map) { sm.Store(new(int), nil) },
+		func(sm *sync.Map) { sm.Store(nil, nil) },
+	} {
+		var (
+			sm  sync.Map
+			err error
+		)
+		f(&sm) // add entries to sm
+		if sorted {
+			_, err = Marshal(&sm)
+		} else {
+			_, err = MarshalOpts(&sm, UnsortedMap())
+		}
+		if err == nil {
+			t.Error("expected a non-nil error")
+		}
+	}
+}
+
 // TestCompositeMapValue tests the marshaling
 // of maps with composite values.
 func TestCompositeMapValue(t *testing.T) {
@@ -512,14 +620,14 @@ type (
 	mkrstrMarshaler string
 	mkvintMarshaler uint64
 	mkrintMarshaler int
-	mkcmpMarshaler  struct{}
+	mkvcmpMarshaler struct{}
 )
 
-func (mkvstrMarshaler) MarshalText() ([]byte, error)  { return []byte("X"), nil }
-func (*mkrstrMarshaler) MarshalText() ([]byte, error) { return []byte("M"), nil }
-func (mkvintMarshaler) MarshalText() ([]byte, error)  { return []byte("Y"), nil }
-func (*mkrintMarshaler) MarshalText() ([]byte, error) { return []byte("M"), nil }
-func (mkcmpMarshaler) MarshalText() ([]byte, error)   { return []byte("Z"), nil }
+func (mkvstrMarshaler) MarshalText() ([]byte, error)  { return []byte("MKVSTR"), nil }
+func (*mkrstrMarshaler) MarshalText() ([]byte, error) { return []byte("MKRSTR"), nil }
+func (mkvintMarshaler) MarshalText() ([]byte, error)  { return []byte("MKVINT"), nil }
+func (*mkrintMarshaler) MarshalText() ([]byte, error) { return []byte("MKRINT"), nil }
+func (mkvcmpMarshaler) MarshalText() ([]byte, error)  { return []byte("MKVCMP"), nil }
 
 // TestMapKeyPrecedence tests that the precedence
 // order of map key types is respected during marshaling.
@@ -531,7 +639,7 @@ func TestMapKeyPrecedence(t *testing.T) {
 		map[mkrstrMarshaler]string{"K": "V"},
 		map[mkvintMarshaler]string{42: "V"},
 		map[mkrintMarshaler]string{1: "one"},
-		map[mkcmpMarshaler]string{{}: "V"},
+		map[mkvcmpMarshaler]string{{}: "V"},
 	}
 	for _, v := range testdata {
 		marshalCompare(t, v, "")
@@ -568,6 +676,8 @@ func TestJSONMarshaler(t *testing.T) {
 		P4 *brjm      `json:""`
 		P5 *brjm      `json:""`           // nil
 		P6 *brjm      `json:",omitempty"` // nil
+
+		// NOTE
 		// time.Time = Non-pointer receiver of composite type.
 		// bvjm = Non-pointer receiver of basic type.
 		// big.Int = Pointer receiver of composite type.
@@ -619,6 +729,8 @@ func TestTextMarshaler(t *testing.T) {
 		P4 *brtm      `json:""`
 		P5 *brtm      `json:""`           // nil
 		P6 *brtm      `json:",omitempty"` // nil
+
+		// NOTE
 		// net.IP = Non-pointer receiver of composite type.
 		// bvtm = Non-pointer receiver of basic type.
 		// big.Float = Pointer receiver of composite type.
@@ -687,6 +799,8 @@ func TestMarshaler(t *testing.T) {
 		P4 *brm `json:""`
 		P5 *brm `json:""`           // nil
 		P6 *brm `json:",omitempty"` // nil
+
+		// NOTE
 		// cvm = Non-pointer receiver of composite type.
 		// bvm = Non-pointer receiver of basic type.
 		// crm = Pointer receiver of composite type.
@@ -767,6 +881,8 @@ func TestMarshalerCtx(t *testing.T) {
 		P4 *brmctx `json:""`
 		P5 *brmctx `json:""`           // nil
 		P6 *brmctx `json:",omitempty"` // nil
+
+		// NOTE
 		// cvmctx = Non-pointer receiver of composite type.
 		// bvmctx = Non-pointer receiver of basic type.
 		// crmctx = Pointer receiver of composite type.

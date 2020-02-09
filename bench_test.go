@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -84,6 +85,22 @@ func BenchmarkMap(b *testing.B) {
 		"Liberia":   0,
 	}
 	benchMarshal(b, m)
+	benchMarshalOpts(b, "jettison-unsorted", m, UnsortedMap())
+}
+
+func BenchmarkSyncMap(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
+	var sm sync.Map
+
+	sm.Store("a", "foobar")
+	sm.Store("b", 42)
+	sm.Store("c", false)
+	sm.Store("d", float64(3.14159))
+
+	benchMarshalOpts(b, "sorted", m)
+	benchMarshalOpts(b, "unsorted", m, UnsortedMap())
 }
 
 func BenchmarkDuration(b *testing.B) {

@@ -5,8 +5,8 @@ All notable changes to this project are documented in this file.
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
 ## [v0.5.0] - 2020-02-02
-#### Refactor of entire project.
-This include the following changes, but not limited to:
+#### Refactor of the entire project.
+This includes the following changes, but not limited to:
 
 - Remove the `Encoder` type to simplify the usage of the library and stick more closely to the design of `encoding/json`
 - Reduce the number of closures used. This improves readability of stacktraces and performance profiles.

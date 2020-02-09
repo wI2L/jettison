@@ -29,7 +29,7 @@ $ go get github.com/wI2L/jettison
 - No code generation required
 - Clear and concise API
 - Configurable with opt-in functional options
-- Native support for `time.Time` and `time.Duration` types
+- Native support for many standard library types, see [improvements][#improvements]
 - Custom `AppendMarshaler` interface to avoid allocations
 - Extensive testsuite that compares its output against `encoding/json`
 
@@ -50,6 +50,8 @@ All notable differences with the standard library behavior are listed below. Ple
 ##### Improvements
 
 - The `time.Time` and `time.Duration` types are handled natively. For time values, the encoder doesn't invoke `MarshalJSON` or `MarshalText`, but use the `time.AppendFormat` [function](https://golang.org/pkg/time/#Time.AppendFormat) instead, and write the result to the stream. Similarly, for durations, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration [format](https://godoc.org/github.com/wI2L/jettison#DurationFmt) configured.
+
+- The `sync.Map` type is handled natively. The marshaling behavior is similar to the one of a standard Go `map`. The option `UnsortedMap` can also be used in cunjunction with this type to disable the default keys sort.
 
 ##### Bugs
 
@@ -128,32 +130,32 @@ Tag: v0.5.0
 
 <details><summary>Stats</summary><br><pre>
 name                    time/op
-Simple/standard-8          670ns ± 2%
-Simple/jsoniter-8          776ns ± 1%
-Simple/segmentj-8          378ns ± 3%
-Simple/jettison-8          472ns ± 1%
-Complex/standard-8        13.9µs ± 1%
-Complex/jsoniter-8        14.2µs ± 1%
-Complex/segmentj-8        9.80µs ± 1%
-Complex/jettison-8        6.88µs ± 1%
-CodeMarshal/standard-8    7.29ms ± 0%
-CodeMarshal/jsoniter-8    8.28ms ± 1%
-CodeMarshal/segmentj-8    5.60ms ± 1%
-CodeMarshal/jettison-8    6.00ms ± 1%
+Simple/standard-8          663ns ± 1%
+Simple/jsoniter-8          774ns ± 1%
+Simple/segmentj-8          377ns ± 2%
+Simple/jettison-8          489ns ± 3%
+Complex/standard-8        13.7µs ± 1%
+Complex/jsoniter-8        14.1µs ± 1%
+Complex/segmentj-8        9.76µs ± 1%
+Complex/jettison-8        6.82µs ± 0%
+CodeMarshal/standard-8    7.26ms ± 1%
+CodeMarshal/jsoniter-8    8.24ms ± 0%
+CodeMarshal/segmentj-8    5.53ms ± 1%
+CodeMarshal/jettison-8    5.98ms ± 0%
 
 name                    speed
-Simple/standard-8        202MB/s ± 1%
+Simple/standard-8        204MB/s ± 1%
 Simple/jsoniter-8        174MB/s ± 1%
-Simple/segmentj-8        357MB/s ± 3%
-Simple/jettison-8        286MB/s ± 1%
-Complex/standard-8      61.3MB/s ± 1%
-Complex/jsoniter-8      57.8MB/s ± 1%
-Complex/segmentj-8      87.9MB/s ± 1%
-Complex/jettison-8       124MB/s ± 1%
-CodeMarshal/standard-8   266MB/s ± 0%
-CodeMarshal/jsoniter-8   234MB/s ± 1%
-CodeMarshal/segmentj-8   346MB/s ± 1%
-CodeMarshal/jettison-8   323MB/s ± 1%
+Simple/segmentj-8        358MB/s ± 2%
+Simple/jettison-8        276MB/s ± 3%
+Complex/standard-8      61.9MB/s ± 1%
+Complex/jsoniter-8      58.3MB/s ± 1%
+Complex/segmentj-8      88.2MB/s ± 1%
+Complex/jettison-8       125MB/s ± 0%
+CodeMarshal/standard-8   267MB/s ± 1%
+CodeMarshal/jsoniter-8   235MB/s ± 0%
+CodeMarshal/segmentj-8   351MB/s ± 1%
+CodeMarshal/jettison-8   325MB/s ± 0%
 
 name                    alloc/op
 Simple/standard-8           144B ± 0%
@@ -166,8 +168,8 @@ Complex/segmentj-8        3.25kB ± 0%
 Complex/jettison-8        1.38kB ± 0%
 CodeMarshal/standard-8    1.96MB ± 1%
 CodeMarshal/jsoniter-8    2.00MB ± 3%
-CodeMarshal/segmentj-8    1.96MB ± 2%
-CodeMarshal/jettison-8    1.97MB ± 1%
+CodeMarshal/segmentj-8    1.97MB ± 2%
+CodeMarshal/jettison-8    1.98MB ± 2%
 
 name                    allocs/op
 Simple/standard-8           1.00 ± 0%

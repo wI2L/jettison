@@ -12,6 +12,7 @@ import (
 var (
 	timeTimeType           = reflect.TypeOf(time.Time{})
 	timeDurationType       = reflect.TypeOf(time.Duration(0))
+	syncMapType            = reflect.TypeOf((*sync.Map)(nil)).Elem()
 	jsonNumberType         = reflect.TypeOf(json.Number(""))
 	jsonRawMessageType     = reflect.TypeOf(json.RawMessage(nil))
 	jsonMarshalerType      = reflect.TypeOf((*json.Marshaler)(nil)).Elem()

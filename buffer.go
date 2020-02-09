@@ -1,8 +1,6 @@
 package jettison
 
-import (
-	"sync"
-)
+import "sync"
 
 const defaultBufCap = 4096
 
