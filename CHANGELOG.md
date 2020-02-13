@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.6.0] - 2020-02-14
+- Add support for the `sync.Map` type. The marshaling behavior for this type is similar to the one of the Go `map`.
+
 ## [v0.5.0] - 2020-02-02
 #### Refactor of the entire project.
 This includes the following changes, but not limited to:
@@ -50,6 +53,7 @@ This includes the following changes, but not limited to:
 ## [v0.1.0] - 2019-08-30
 Initial realease.
 
+[v0.6.0]: https://github.com/wI2L/jettison/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/wI2L/jettison/compare/v0.4.1...v0.5.0
 [v0.4.1]: https://github.com/wI2L/jettison/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/wI2L/jettison/compare/v0.3.1...v0.4.0
