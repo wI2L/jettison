@@ -130,32 +130,42 @@ Tag: v0.5.0
 
 <details><summary>Stats</summary><br><pre>
 name                    time/op
-Simple/standard-8          663ns ± 1%
-Simple/jsoniter-8          774ns ± 1%
-Simple/segmentj-8          377ns ± 2%
-Simple/jettison-8          489ns ± 3%
-Complex/standard-8        13.7µs ± 1%
-Complex/jsoniter-8        14.1µs ± 1%
-Complex/segmentj-8        9.76µs ± 1%
-Complex/jettison-8        6.82µs ± 0%
-CodeMarshal/standard-8    7.26ms ± 1%
-CodeMarshal/jsoniter-8    8.24ms ± 0%
-CodeMarshal/segmentj-8    5.53ms ± 1%
-CodeMarshal/jettison-8    5.98ms ± 0%
+Simple/standard-8          666ns ± 4%
+Simple/jsoniter-8          770ns ± 1%
+Simple/segmentj-8          376ns ± 0%
+Simple/jettison-8          485ns ± 1%
+Complex/standard-8        13.8µs ± 1%
+Complex/jsoniter-8        14.1µs ± 2%
+Complex/segmentj-8        9.77µs ± 2%
+Complex/jettison-8        6.84µs ± 1%
+CodeMarshal/standard-8    7.27ms ± 1%
+CodeMarshal/jsoniter-8    8.28ms ± 1%
+CodeMarshal/segmentj-8    5.55ms ± 0%
+CodeMarshal/jettison-8    5.99ms ± 1%
+Map/standard-8            2.19µs ± 0%
+Map/jsoniter-8            1.84µs ± 1%
+Map/segmentj-8            1.92µs ± 0%
+Map/jettison-8             917ns ± 1%
+Map/jettison-nosort-8      607ns ± 2%
 
 name                    speed
-Simple/standard-8        204MB/s ± 1%
-Simple/jsoniter-8        174MB/s ± 1%
-Simple/segmentj-8        358MB/s ± 2%
-Simple/jettison-8        276MB/s ± 3%
-Complex/standard-8      61.9MB/s ± 1%
-Complex/jsoniter-8      58.3MB/s ± 1%
-Complex/segmentj-8      88.2MB/s ± 1%
-Complex/jettison-8       125MB/s ± 0%
+Simple/standard-8        203MB/s ± 4%
+Simple/jsoniter-8        175MB/s ± 1%
+Simple/segmentj-8        359MB/s ± 0%
+Simple/jettison-8        278MB/s ± 1%
+Complex/standard-8      61.8MB/s ± 1%
+Complex/jsoniter-8      58.1MB/s ± 2%
+Complex/segmentj-8      88.1MB/s ± 2%
+Complex/jettison-8       124MB/s ± 2%
 CodeMarshal/standard-8   267MB/s ± 1%
-CodeMarshal/jsoniter-8   235MB/s ± 0%
-CodeMarshal/segmentj-8   351MB/s ± 1%
-CodeMarshal/jettison-8   325MB/s ± 0%
+CodeMarshal/jsoniter-8   234MB/s ± 1%
+CodeMarshal/segmentj-8   349MB/s ± 0%
+CodeMarshal/jettison-8   324MB/s ± 1%
+Map/standard-8          38.9MB/s ± 0%
+Map/jsoniter-8          46.2MB/s ± 1%
+Map/segmentj-8          44.2MB/s ± 1%
+Map/jettison-8          92.7MB/s ± 1%
+Map/jettison-nosort-8    140MB/s ± 2%
 
 name                    alloc/op
 Simple/standard-8           144B ± 0%
@@ -167,9 +177,14 @@ Complex/jsoniter-8        4.65kB ± 0%
 Complex/segmentj-8        3.25kB ± 0%
 Complex/jettison-8        1.38kB ± 0%
 CodeMarshal/standard-8    1.96MB ± 1%
-CodeMarshal/jsoniter-8    2.00MB ± 3%
-CodeMarshal/segmentj-8    1.97MB ± 2%
+CodeMarshal/jsoniter-8    1.99MB ± 5%
+CodeMarshal/segmentj-8    1.98MB ± 2%
 CodeMarshal/jettison-8    1.98MB ± 2%
+Map/standard-8              848B ± 0%
+Map/jsoniter-8              924B ± 0%
+Map/segmentj-8              592B ± 0%
+Map/jettison-8             96.0B ± 0%
+Map/jettison-nosort-8       160B ± 0%
 
 name                    allocs/op
 Simple/standard-8           1.00 ± 0%
@@ -184,6 +199,11 @@ CodeMarshal/standard-8      1.00 ± 0%
 CodeMarshal/jsoniter-8      2.00 ± 0%
 CodeMarshal/segmentj-8      1.00 ± 0%
 CodeMarshal/jettison-8      1.00 ± 0%
+Map/standard-8              19.0 ± 0%
+Map/jsoniter-8              15.0 ± 0%
+Map/segmentj-8              18.0 ± 0%
+Map/jettison-8              1.00 ± 0%
+Map/jettison-nosort-8       2.00 ± 0%
 </pre></details>
 
 #### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L49)]
@@ -204,9 +224,15 @@ Borrowed from the `encoding/json` tests. See [testdata/code.json.gz](testdata/co
 
 ![CodeMarshal Benchmark Graph](./images/benchmarks/code-marshal.svg)
 
+#### Map [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L75)]
+
+Simple `map[string]int` with 6 keys.
+
+![Map Graph](./images/benchmarks/map.svg)
+
 ## Credits
 
-This library and its design has been inspired by the work of others **@bet365** and **@segmentio**.
+This library and its design has been inspired by the work of others at **@bet365** and **@segmentio**.
 See the following projects for reference:
 - [bet365/jingo](https://github.com/bet365/jingo)
 - [segmentio/encoding](https://github.com/segmentio/encoding)

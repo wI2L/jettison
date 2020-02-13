@@ -73,9 +73,6 @@ func BenchmarkCodeMarshal(b *testing.B) {
 }
 
 func BenchmarkMap(b *testing.B) {
-	if testing.Short() {
-		b.SkipNow()
-	}
 	m := map[string]int{
 		"Cassianus": 1,
 		"Ludovicus": 42,
@@ -85,7 +82,7 @@ func BenchmarkMap(b *testing.B) {
 		"Liberia":   0,
 	}
 	benchMarshal(b, m)
-	benchMarshalOpts(b, "jettison-unsorted", m, UnsortedMap())
+	benchMarshalOpts(b, "jettison-nosort", m, UnsortedMap())
 }
 
 func BenchmarkSyncMap(b *testing.B) {

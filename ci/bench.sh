@@ -32,7 +32,7 @@ if [ "$CHARTS" == "true" ]; then
    # Generate chart images and apply trim/border
    # operations using ImageMagick.
    cd tools/charts && npm --silent --no-audit install && cd ../..
-   node tools/charts/index.js -f .benchstats.json -d images/benchmarks -n Simple,Complex,CodeMarshal
+   node tools/charts/index.js -f .benchstats.json -d images/benchmarks -n Simple,Complex,CodeMarshal,Map
 fi
 
 rm -f .benchruns
