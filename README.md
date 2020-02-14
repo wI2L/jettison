@@ -1,7 +1,7 @@
 <h1 align="center">Jettison</h1>
 <p align="center"><img src="images/logo.png" height="275px" width="auto" alt="GoCaptain"></p><p align="center">Jettison is a fast and flexible <strong>JSON</strong> encoder for the Go programming language, inspired by <a href="https://github.com/bet365/jingo">bet365/jingo</a>, with a richer features set, aiming at <strong>100%</strong> compatibility with the standard library.</p>
 <p align="center">
-    <a href="https://godoc.org/github.com/wI2L/jettison"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
+    <a href="https://pkg.go.dev/github.com/wI2L/jettison?tab=doc"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
     <a href="https://goreportcard.com/report/wI2L/jettison"><img src="https://goreportcard.com/badge/github.com/wI2L/fizz"></a>
     <a href="https://travis-ci.org/wI2L/jettison"><img src="https://travis-ci.org/wI2L/jettison.svg?branch=master"></a>
     <a href="https://github.com/wI2L/jettison/actions"><img src="https://github.com/wI2L/jettison/workflows/CI/badge.svg"></a>
@@ -29,7 +29,7 @@ $ go get github.com/wI2L/jettison
 - No code generation required
 - Clear and concise API
 - Configurable with opt-in functional options
-- Native support for many standard library types, see [improvements][#improvements]
+- Native support for many standard library types, see [improvements](#improvements)
 - Custom `AppendMarshaler` interface to avoid allocations
 - Extensive testsuite that compares its output against `encoding/json`
 
@@ -65,7 +65,7 @@ All notable differences with the standard library behavior are listed below. Ple
 
 ### Basic
 
-As stated above, the library behave similarly to the `encoding/json` package. You can simply replace the `json.Marshal` function wihh `jettison.Marshal`, and expect the same output with better performances.
+As stated above, the library behave similarly to the `encoding/json` package. You can simply replace the `json.Marshal` function with `jettison.Marshal`, and expect the same output with better performances.
 
 ```go
 type X struct {
@@ -81,6 +81,7 @@ if err != nil {
 }
 os.Stdout.Write(b)
 ```
+###### Result
 ```json
 {"a":"Loreum","b":42}
 ```
@@ -89,22 +90,24 @@ os.Stdout.Write(b)
 
 If more control over the encoding behavior is required, use the `MarshalOpts` function instead. The second parameter is variadic and accept a list of functional opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) described below:
 
-- **TimeLayout** • Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method. The default layout is `time.RFC3339Nano`.
-- **DurationFormat** • Defines the format used to encode `time.Duration` values. The default format is `DurationString`. See the documentation of the `DurationFmt` type for the complete list of formats available.
-- **UnixTime** • Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since January 1, 1970 UTC. It uses the `time.Unix` method. This option has precedence over `TimeLayout`.
-- **UnsortedMap** • Disables map keys sort.
-- **ByteArrayAsString** • Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for the `string` type, unless the option `NoStringEscaping` is also used.
-- **RawByteSlice** • Disables the *base64* default encoding used for byte slices.
-- **NilMapEmpty** • Encodes nil Go maps as empty JSON objects rather than `null`.
-- **NilSliceEmpty** • Encodes nil Go slices as empty JSON arrays rather than `null`.
-- **NoStringEscaping** • Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.
-- **NoHTMLEscaping** • Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.
-- **NoUTF8Coercion** • Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.
-- **AllowList** • Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.
-- **DenyList** • Sets a blacklist that represents which fields are ignored during the marshaling of a Go struct.
-- **NoCompact** • Disables the compaction of JSON output produced by `MarshalJSON` method, and the content of `json.RawMessage` values.
-- **NoNumberValidation** • Disables the validation of `json.Number` values.
-- **WithContext** • Sets the `context.Context` to be passed to invocations of `AppendJSONContext` methods.
+|                     name | description                                                                                                                                                                        |
+| ------------------------:| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|         **`TimeLayout`** | Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method.                |
+|     **`DurationFormat`** | Defines the format used to encode `time.Duration` values. See the documentation of the `DurationFmt` type for the complete list of formats available.                              |
+|           **`UnixTime`** | Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since *January 1, 1970 UTC*. This option has precedence over `TimeLayout`.   |
+|        **`UnsortedMap`** | Disables map keys sort.                                                                                                                                                            |
+|  **`ByteArrayAsString`** | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for JSON strings, unless the option `NoStringEscaping` is used. |
+|       **`RawByteSlice`** | Disables the *base64* default encoding used for byte slices.                                                                                                                       |
+|        **`NilMapEmpty`** | Encodes nil Go maps as empty JSON objects rather than `null`.                                                                                                                      |
+|      **`NilSliceEmpty`** | Encodes nil Go slices as empty JSON arrays rather than `null`.                                                                                                                     |
+|   **`NoStringEscaping`** | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                              |
+|     **`NoHTMLEscaping`** | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.                                 |
+|     **`NoUTF8Coercion`** | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                       |
+|          **`AllowList`** | Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.                                                                                       |
+|           **`DenyList`** | Sets a blacklist that represents which fields are ignored during the marshaling of a Go struct.                                                                                    |
+|          **`NoCompact`** | Disables the compaction of JSON output produced by `MarshalJSON` method, and `json.RawMessage` values.                                                                             |
+| **`NoNumberValidation`** | Disables the validation of `json.Number` values.                                                                                                                                   |
+|        **`WithContext`** | Sets the `context.Context` to be passed to invocations of `AppendJSONContext` methods.                                                                                             |
 
 Take a look at the [examples](example_test.go) to see these options in action.
 
@@ -119,7 +122,7 @@ go test -bench=. | prettybench
 
 ### Results `-short`
 
-These benchmarks were run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a MacBook Pro 15" (late-2013) with the following specs:
+These benchmarks were run 10x (statistics computed with [benchstat](https://godoc.org/golang.org/x/perf/cmd/benchstat)) on a MacBook Pro 15", with the following specs:
 ```
 OS:  macOS Mojave (10.14.6)
 CPU: 2.6 GHz Intel Core i7
@@ -206,19 +209,19 @@ Map/jettison-8              1.00 ± 0%
 Map/jettison-nosort-8       2.00 ± 0%
 </pre></details>
 
-#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L49)]
+#### Simple [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L50)]
 
 Basic payload with fields of type `string`, `int` and `bool`.
 
 ![Simple Benchmark Graph](./images/benchmarks/simple.svg)
 
-#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L64)]
+#### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L65)]
 
 Large payload with a variety of composite Go types, such as `struct`, `map`, `interface`, multi-dimensions `array` and `slice`, with pointer and non-pointer value types.
 
 ![Complex Benchmark Graph](./images/benchmarks/complex.svg)
 
-#### CodeMarshal [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L68)]
+#### CodeMarshal [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L69)]
 
 Borrowed from the `encoding/json` tests. See [testdata/code.json.gz](testdata/code.json.gz).
 

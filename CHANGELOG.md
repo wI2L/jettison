@@ -16,7 +16,7 @@ This includes the following changes, but not limited to:
 - Improve the marshaling performances of many types.
 - Add support for marshaling `json.RawMessage` values.
 - Add new options `DenyList`, `NoNumberValidation`, `NoCompact`, and rename some others.
-- Replace the `Marshaler` and `MarshalerCtx` interfaces by `AppendMarshaler` and `AppendMarshalerCtx` to follow the new "append" model.
+- Replace the `Marshaler` and `MarshalerCtx` interfaces by `AppendMarshaler` and `AppendMarshalerCtx` to follow the new *append* model.
 - Remove the `IntegerBase` option, which didn't worked properly with the `string` JSON tag.
 
 > Some of the improvements have been inspired by the **github.com/segmentio/encoding** project.
