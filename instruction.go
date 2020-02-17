@@ -285,7 +285,7 @@ func newStructInstr(t reflect.Type, canAddr bool) instruction {
 
 func newStructFieldsInstr(t reflect.Type, canAddr bool) instruction {
 	if t.NumField() == 0 {
-		// fast instruction for empty struct.
+		// Fast path for empty struct.
 		return func(_ unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 			return append(dst, "{}"...), nil
 		}
@@ -298,8 +298,14 @@ func newStructFieldsInstr(t reflect.Type, canAddr bool) instruction {
 		f := &dupl[i]
 		ftyp := typeByIndex(t, f.index)
 		etyp := ftyp
+
 		if etyp.Kind() == reflect.Ptr {
 			etyp = etyp.Elem()
+		}
+		if !isNilable(ftyp) {
+			// Disable the omitnil option, to
+			// eliminate a check at runtime.
+			f.omitNil = false
 		}
 		// Generate instruction and empty func of the field.
 		// Only strings, floats, integers, and booleans
@@ -401,11 +407,10 @@ func wrapQuotedInstr(ins instruction) instruction {
 	return func(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 		dst = append(dst, '"')
 		var err error
-		if dst, err = ins(p, dst, opts); err != nil {
-			return dst, err
+		dst, err = ins(p, dst, opts)
+		if err == nil {
+			dst = append(dst, '"')
 		}
-		dst = append(dst, '"')
-
-		return dst, nil
+		return dst, err
 	}
 }

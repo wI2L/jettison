@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.7.0] - 2020-02-17
+- Add the `omitnil` field tag's option, which specifies that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option. See this issue for more informations about the original proposal: golang.org/issue/22480.
+
 ## [v0.6.0] - 2020-02-14
 - Add support for the `sync.Map` type. The marshaling behavior for this type is similar to the one of the Go `map`.
 
@@ -16,7 +19,7 @@ This includes the following changes, but not limited to:
 - Improve the marshaling performances of many types.
 - Add support for marshaling `json.RawMessage` values.
 - Add new options `DenyList`, `NoNumberValidation`, `NoCompact`, and rename some others.
-- Replace the `Marshaler` and `MarshalerCtx` interfaces by `AppendMarshaler` and `AppendMarshalerCtx` to follow the new *append* model.
+- Replace the `Marshaler` and `MarshalerCtx` interfaces by `AppendMarshaler` and `AppendMarshalerCtx` to follow the new *append* model. See this issue on GitHub for more details: golang.org/issue/34701.
 - Remove the `IntegerBase` option, which didn't worked properly with the `string` JSON tag.
 
 > Some of the improvements have been inspired by the **github.com/segmentio/encoding** project.
@@ -53,6 +56,7 @@ This includes the following changes, but not limited to:
 ## [v0.1.0] - 2019-08-30
 Initial realease.
 
+[v0.7.0]: https://github.com/wI2L/jettison/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/wI2L/jettison/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/wI2L/jettison/compare/v0.4.1...v0.5.0
 [v0.4.1]: https://github.com/wI2L/jettison/compare/v0.4.0...v0.4.1

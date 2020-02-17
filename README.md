@@ -17,7 +17,7 @@
 
 Jettison uses the new [Go modules](https://github.com/golang/go/wiki/Modules). Releases are tagged according to the _SemVer_ format, prefixed with a `v`, starting from *0.2.0*. You can get the latest release using the following command.
 
-```sh
+```console
 $ go get github.com/wI2L/jettison
 ```
 
@@ -52,6 +52,8 @@ All notable differences with the standard library behavior are listed below. Ple
 - The `time.Time` and `time.Duration` types are handled natively. For time values, the encoder doesn't invoke `MarshalJSON` or `MarshalText`, but use the `time.AppendFormat` [function](https://golang.org/pkg/time/#Time.AppendFormat) instead, and write the result to the stream. Similarly, for durations, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration [format](https://godoc.org/github.com/wI2L/jettison#DurationFmt) configured.
 
 - The `sync.Map` type is handled natively. The marshaling behavior is similar to the one of a standard Go `map`. The option `UnsortedMap` can also be used in cunjunction with this type to disable the default keys sort.
+
+- The `omitnil` field tag's option can be used to specify that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option.
 
 ##### Bugs
 
@@ -128,47 +130,47 @@ OS:  macOS Mojave (10.14.6)
 CPU: 2.6 GHz Intel Core i7
 Mem: 16GB
 Go:  go version go1.13.7 darwin/amd64
-Tag: v0.5.0
+Tag: v0.7.0
 ```
 
 <details><summary>Stats</summary><br><pre>
 name                    time/op
-Simple/standard-8          666ns ± 4%
-Simple/jsoniter-8          770ns ± 1%
-Simple/segmentj-8          376ns ± 0%
-Simple/jettison-8          485ns ± 1%
+Simple/standard-8          662ns ± 1%
+Simple/jsoniter-8          775ns ± 1%
+Simple/segmentj-8          380ns ± 1%
+Simple/jettison-8          472ns ± 1%
 Complex/standard-8        13.8µs ± 1%
-Complex/jsoniter-8        14.1µs ± 2%
-Complex/segmentj-8        9.77µs ± 2%
-Complex/jettison-8        6.84µs ± 1%
-CodeMarshal/standard-8    7.27ms ± 1%
-CodeMarshal/jsoniter-8    8.28ms ± 1%
-CodeMarshal/segmentj-8    5.55ms ± 0%
-CodeMarshal/jettison-8    5.99ms ± 1%
-Map/standard-8            2.19µs ± 0%
-Map/jsoniter-8            1.84µs ± 1%
+Complex/jsoniter-8        14.1µs ± 1%
+Complex/segmentj-8        9.72µs ± 1%
+Complex/jettison-8        6.86µs ± 1%
+CodeMarshal/standard-8    7.25ms ± 0%
+CodeMarshal/jsoniter-8    8.27ms ± 1%
+CodeMarshal/segmentj-8    5.54ms ± 0%
+CodeMarshal/jettison-8    6.02ms ± 0%
+Map/standard-8            2.19µs ± 1%
+Map/jsoniter-8            1.83µs ± 1%
 Map/segmentj-8            1.92µs ± 0%
-Map/jettison-8             917ns ± 1%
-Map/jettison-nosort-8      607ns ± 2%
+Map/jettison-8             904ns ± 1%
+Map/jettison-nosort-8      600ns ± 1%
 
 name                    speed
-Simple/standard-8        203MB/s ± 4%
-Simple/jsoniter-8        175MB/s ± 1%
-Simple/segmentj-8        359MB/s ± 0%
-Simple/jettison-8        278MB/s ± 1%
+Simple/standard-8        204MB/s ± 1%
+Simple/jsoniter-8        174MB/s ± 1%
+Simple/segmentj-8        355MB/s ± 2%
+Simple/jettison-8        286MB/s ± 1%
 Complex/standard-8      61.8MB/s ± 1%
-Complex/jsoniter-8      58.1MB/s ± 2%
-Complex/segmentj-8      88.1MB/s ± 2%
-Complex/jettison-8       124MB/s ± 2%
-CodeMarshal/standard-8   267MB/s ± 1%
-CodeMarshal/jsoniter-8   234MB/s ± 1%
-CodeMarshal/segmentj-8   349MB/s ± 0%
-CodeMarshal/jettison-8   324MB/s ± 1%
-Map/standard-8          38.9MB/s ± 0%
-Map/jsoniter-8          46.2MB/s ± 1%
-Map/segmentj-8          44.2MB/s ± 1%
-Map/jettison-8          92.7MB/s ± 1%
-Map/jettison-nosort-8    140MB/s ± 2%
+Complex/jsoniter-8      58.1MB/s ± 1%
+Complex/segmentj-8      88.5MB/s ± 1%
+Complex/jettison-8       124MB/s ± 1%
+CodeMarshal/standard-8   268MB/s ± 0%
+CodeMarshal/jsoniter-8   235MB/s ± 1%
+CodeMarshal/segmentj-8   350MB/s ± 0%
+CodeMarshal/jettison-8   322MB/s ± 0%
+Map/standard-8          38.9MB/s ± 1%
+Map/jsoniter-8          46.4MB/s ± 1%
+Map/segmentj-8          44.3MB/s ± 0%
+Map/jettison-8          94.0MB/s ± 1%
+Map/jettison-nosort-8    142MB/s ± 1%
 
 name                    alloc/op
 Simple/standard-8           144B ± 0%
@@ -179,12 +181,12 @@ Complex/standard-8        4.76kB ± 0%
 Complex/jsoniter-8        4.65kB ± 0%
 Complex/segmentj-8        3.25kB ± 0%
 Complex/jettison-8        1.38kB ± 0%
-CodeMarshal/standard-8    1.96MB ± 1%
-CodeMarshal/jsoniter-8    1.99MB ± 5%
-CodeMarshal/segmentj-8    1.98MB ± 2%
-CodeMarshal/jettison-8    1.98MB ± 2%
+CodeMarshal/standard-8    1.95MB ± 1%
+CodeMarshal/jsoniter-8    1.99MB ± 2%
+CodeMarshal/segmentj-8    1.97MB ± 2%
+CodeMarshal/jettison-8    1.97MB ± 2%
 Map/standard-8              848B ± 0%
-Map/jsoniter-8              924B ± 0%
+Map/jsoniter-8              925B ± 0%
 Map/segmentj-8              592B ± 0%
 Map/jettison-8             96.0B ± 0%
 Map/jettison-nosort-8       160B ± 0%

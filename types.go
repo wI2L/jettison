@@ -77,6 +77,14 @@ func isInlined(t reflect.Type) bool {
 	}
 }
 
+func isNilable(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map:
+		return true
+	}
+	return false
+}
+
 // cachedEmptyFuncOf is similar to emptyFuncOf, but
 // returns a cached function, to avoid duplicates.
 func cachedEmptyFuncOf(t reflect.Type) emptyFunc {

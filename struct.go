@@ -28,13 +28,14 @@ type field struct {
 	tag        bool
 	quoted     bool
 	omitEmpty  bool
+	omitNil    bool
 	instr      instruction
 	empty      emptyFunc
 
-	// embedSeqs represents the sequence of offsets
+	// embedSeq represents the sequence of offsets
 	// and indirections to follow to reach the field
 	// through one or more anonymous fields.
-	embedSeqs []seq
+	embedSeq []seq
 }
 
 type typeCount map[reflect.Type]int
@@ -89,7 +90,7 @@ func structFields(t reflect.Type) []field {
 				continue
 			}
 			seen[f.typ] = true
-			// Scan the type for fields to encoded.
+			// Scan the type for fields to encode.
 			flds, next = scanFields(f, flds, next, ccnt, ncnt)
 		}
 	}
@@ -274,13 +275,14 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 				tag:        tagged,
 				index:      index,
 				omitEmpty:  opts.Contains("omitempty"),
+				omitNil:    opts.Contains("omitnil"),
 				quoted:     opts.Contains("string") && isBasicType(typ),
 				keyNonEsc:  []byte(`"` + name + `":`),
-				keyEscHTML: append([]byte(nil), escBuf.Bytes()...),    // copy
-				embedSeqs:  append(f.embedSeqs[:0:0], f.embedSeqs...), // clone
+				keyEscHTML: append([]byte(nil), escBuf.Bytes()...),  // copy
+				embedSeq:   append(f.embedSeq[:0:0], f.embedSeq...), // clone
 			}
 			// Add final offset to sequences.
-			nf.embedSeqs = append(nf.embedSeqs, seq{sf.Offset, false})
+			nf.embedSeq = append(nf.embedSeq, seq{sf.Offset, false})
 			fields = append(fields, nf)
 
 			if cnt[f.typ] > 1 {
@@ -298,10 +300,10 @@ func scanFields(f field, fields, next []field, cnt, ncnt typeCount) ([]field, []
 		ncnt[typ]++
 		if ncnt[typ] == 1 {
 			next = append(next, field{
-				typ:       typ,
-				name:      typ.Name(),
-				index:     index,
-				embedSeqs: append(f.embedSeqs, seq{sf.Offset, isPtr}),
+				typ:      typ,
+				name:     typ.Name(),
+				index:    index,
+				embedSeq: append(f.embedSeq, seq{sf.Offset, isPtr}),
 			})
 		}
 	}

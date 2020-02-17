@@ -208,7 +208,7 @@ fieldLoop:
 		// Find the nested struct field by following
 		// the offset sequence, indirecting encountered
 		// pointers as needed.
-		for _, s := range f.embedSeqs {
+		for _, s := range f.embedSeq {
 			v = unsafe.Pointer(uintptr(v) + s.offset)
 			if s.indir {
 				if v = *(*unsafe.Pointer)(v); v == nil {
@@ -219,8 +219,13 @@ fieldLoop:
 				}
 			}
 		}
+		// Ignore the field if it is a nil pointer and has
+		// the omitnil option in his tag.
+		if f.omitNil && *(*unsafe.Pointer)(v) == nil {
+			continue
+		}
 		// Ignore the field if it represents the zero-value
-		// of its type and has the omitempty option in its tag.
+		// of its type and has the omitempty option in his tag.
 		// Empty func is non-nil only if the field has the
 		// omitempty option in its tag.
 		if f.omitEmpty && f.empty(v) {

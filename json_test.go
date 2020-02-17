@@ -1117,6 +1117,52 @@ func TestStructFieldOmitempty(t *testing.T) {
 	marshalCompare(t, xx, "")
 }
 
+// TestStructFieldOmitnil tests that the fields of a
+// struct with the omitnil option are not encoded
+// when they have a nil value.
+func TestStructFieldOmitnil(t *testing.T) {
+	// nolint:staticcheck
+	type x struct {
+		Sn  string                 `json:"sn,omitnil"`
+		In  int                    `json:"in,omitnil"`
+		Un  uint                   `json:"un,omitnil"`
+		Fn  float64                `json:"fn,omitnil"`
+		Bn  bool                   `json:"bn,omitnil"`
+		Sln []string               `json:"sln,omitnil"`
+		Mpn map[string]interface{} `json:"mpn,omitnil"`
+		Stn struct{}               `json:"stn,omitnil"`
+		Ptn *string                `json:"ptn,omitnil"`
+		Ifn interface{}            `json:"ifn,omitnil"`
+	}
+	var (
+		xx     = x{}
+		before = `{"sn":"","in":0,"un":0,"fn":0,"bn":false,"stn":{}}`
+		after  = `{"sn":"","in":0,"un":0,"fn":0,"bn":false,"sln":[],"mpn":{},"stn":{},"ptn":"Loreum","ifn":42}`
+	)
+	b, err := Marshal(xx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(b); got != before {
+		t.Errorf("before: got: %#q, want: %#q", got, before)
+	}
+	s := "Loreum"
+
+	xx.Sln = make([]string, 0)
+	xx.Mpn = map[string]interface{}{}
+	xx.Stn = struct{}{}
+	xx.Ptn = &s
+	xx.Ifn = 42
+
+	b, err = Marshal(xx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(b); got != after {
+		t.Errorf("after: got: %#q, want: %#q", got, after)
+	}
+}
+
 // TestQuotedStructFields tests that the fields of
 // a struct with the string option are quoted during
 // marshaling if the type support it.
