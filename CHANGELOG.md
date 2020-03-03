@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.7.1] - 2020-03-03
+- Fix a regression in the marshaling of `nil` map keys that implement the `encoding.TextMarshaler` interface, intoduced during refactor in version **0.5.0**.
+- Split `TestTextMarshalerMapKey` and `TestNilMarshaler` tests with build constraints to allow previously ignored cases to run with Go1.14.
+
 ## [v0.7.0] - 2020-02-17
 - Add the `omitnil` field tag's option, which specifies that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option. See this issue for more informations about the original proposal: [#22480](https://golang.org/issue/22480).
 

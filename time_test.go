@@ -63,37 +63,6 @@ func TestAppendDuration(t *testing.T) {
 	}
 }
 
-//nolint:scopelint
-func BenchmarkRFC3339Time(b *testing.B) {
-	if testing.Short() {
-		b.SkipNow()
-	}
-	tm := time.Now()
-
-	for _, tt := range []struct {
-		name   string
-		layout string
-	}{
-		{"", time.RFC3339},
-		{"-nano", time.RFC3339Nano},
-	} {
-		b.Run(fmt.Sprintf("%s%s", "jettison", tt.name), func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				buf := make([]byte, 32)
-				appendRFC3339Time(tm, buf, tt.layout == time.RFC3339Nano)
-			}
-		})
-		b.Run(fmt.Sprintf("%s%s", "standard", tt.name), func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				buf := make([]byte, 32)
-				tm.AppendFormat(buf, tt.layout)
-			}
-		})
-	}
-}
-
 func TestAppendRFC3339Time(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	var (
@@ -132,5 +101,36 @@ func TestAppendRFC3339Time(t *testing.T) {
 				t.Errorf("got %s, want %s", s, want)
 			}
 		}
+	}
+}
+
+//nolint:scopelint
+func BenchmarkRFC3339Time(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
+	tm := time.Now()
+
+	for _, tt := range []struct {
+		name   string
+		layout string
+	}{
+		{"", time.RFC3339},
+		{"-nano", time.RFC3339Nano},
+	} {
+		b.Run(fmt.Sprintf("%s%s", "jettison", tt.name), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				buf := make([]byte, 32)
+				appendRFC3339Time(tm, buf, tt.layout == time.RFC3339Nano)
+			}
+		})
+		b.Run(fmt.Sprintf("%s%s", "standard", tt.name), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				buf := make([]byte, 32)
+				tm.AppendFormat(buf, tt.layout)
+			}
+		})
 	}
 }

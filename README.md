@@ -47,7 +47,7 @@ The main concept of Jettison consists of using pre-build instructions-set to red
 
 All notable differences with the standard library behavior are listed below. Please note that these might evolve with future versions of the package.
 
-##### Improvements
+#### Improvements
 
 - The `time.Time` and `time.Duration` types are handled natively. For time values, the encoder doesn't invoke `MarshalJSON` or `MarshalText`, but use the `time.AppendFormat` [function](https://golang.org/pkg/time/#Time.AppendFormat) instead, and write the result to the stream. Similarly, for durations, it isn't necessary to implements the `json.Marshaler` or `encoding.TextMarshaler` interfaces on a custom wrapper type, the encoder uses the result of one of the methods `Minutes`, `Seconds`, `Nanoseconds` or `String`, based on the duration [format](https://godoc.org/github.com/wI2L/jettison#DurationFmt) configured.
 
@@ -55,7 +55,9 @@ All notable differences with the standard library behavior are listed below. Ple
 
 - The `omitnil` field tag's option can be used to specify that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option.
 
-##### Bugs
+#### Bugs
+
+##### Go1.13 and backward
 
 - Nil map keys values implementing the `encoding.TextMarshaler` interface are encoded as empty strings, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/33675) for more details.<sup>[1]</sup>
 
@@ -92,24 +94,24 @@ os.Stdout.Write(b)
 
 If more control over the encoding behavior is required, use the `MarshalOpts` function instead. The second parameter is variadic and accept a list of functional opt-in [options](https://godoc.org/github.com/wI2L/jettison#Option) described below:
 
-|                     name | description                                                                                                                                                                        |
-| ------------------------:| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|         **`TimeLayout`** | Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method.                |
-|     **`DurationFormat`** | Defines the format used to encode `time.Duration` values. See the documentation of the `DurationFmt` type for the complete list of formats available.                              |
-|           **`UnixTime`** | Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since *January 1, 1970 UTC*. This option has precedence over `TimeLayout`.   |
-|        **`UnsortedMap`** | Disables map keys sort.                                                                                                                                                            |
-|  **`ByteArrayAsString`** | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for JSON strings, unless the option `NoStringEscaping` is used. |
-|       **`RawByteSlice`** | Disables the *base64* default encoding used for byte slices.                                                                                                                       |
-|        **`NilMapEmpty`** | Encodes nil Go maps as empty JSON objects rather than `null`.                                                                                                                      |
-|      **`NilSliceEmpty`** | Encodes nil Go slices as empty JSON arrays rather than `null`.                                                                                                                     |
-|   **`NoStringEscaping`** | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                              |
-|     **`NoHTMLEscaping`** | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.                                 |
-|     **`NoUTF8Coercion`** | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                       |
-|          **`AllowList`** | Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.                                                                                       |
-|           **`DenyList`** | Sets a blacklist that represents which fields are ignored during the marshaling of a Go struct.                                                                                    |
-|          **`NoCompact`** | Disables the compaction of JSON output produced by `MarshalJSON` method, and `json.RawMessage` values.                                                                             |
+|           name           | description                                                                                                                                                                        |
+|:------------------------:| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|     **`TimeLayout`**     | Defines the layout used to encode `time.Time` values. The layout must be compatible with the [AppendFormat](https://golang.org/pkg/time/#Time.AppendFormat) method.                |
+|   **`DurationFormat`**   | Defines the format used to encode `time.Duration` values. See the documentation of the `DurationFmt` type for the complete list of formats available.                              |
+|      **`UnixTime`**      | Encode `time.Time` values as JSON numbers representing Unix timestamps, the number of seconds elapsed since *January 1, 1970 UTC*. This option has precedence over `TimeLayout`.   |
+|    **`UnsortedMap`**     | Disables map keys sort.                                                                                                                                                            |
+| **`ByteArrayAsString`**  | Encodes byte arrays as JSON strings rather than JSON arrays. The output is subject to the same escaping rules used for JSON strings, unless the option `NoStringEscaping` is used. |
+|    **`RawByteSlice`**    | Disables the *base64* default encoding used for byte slices.                                                                                                                       |
+|    **`NilMapEmpty`**     | Encodes nil Go maps as empty JSON objects rather than `null`.                                                                                                                      |
+|   **`NilSliceEmpty`**    | Encodes nil Go slices as empty JSON arrays rather than `null`.                                                                                                                     |
+|  **`NoStringEscaping`**  | Disables string escaping. `NoHTMLEscaping` and `NoUTF8Coercion` are ignored when this option is used.                                                                              |
+|   **`NoHTMLEscaping`**   | Disables the escaping of special HTML characters such as `&`, `<` and `>` in JSON strings. This is similar to `json.Encoder.SetEscapeHTML(false)`.                                 |
+|   **`NoUTF8Coercion`**   | Disables the replacement of invalid bytes with the Unicode replacement rune in JSON strings.                                                                                       |
+|     **`AllowList`**      | Sets a whitelist that represents which fields are to be encoded when marshaling a Go struct.                                                                                       |
+|      **`DenyList`**      | Sets a blacklist that represents which fields are ignored during the marshaling of a Go struct.                                                                                    |
+|     **`NoCompact`**      | Disables the compaction of JSON output produced by `MarshalJSON` method, and `json.RawMessage` values.                                                                             |
 | **`NoNumberValidation`** | Disables the validation of `json.Number` values.                                                                                                                                   |
-|        **`WithContext`** | Sets the `context.Context` to be passed to invocations of `AppendJSONContext` methods.                                                                                             |
+|    **`WithContext`**     | Sets the `context.Context` to be passed to invocations of `AppendJSONContext` methods.                                                                                             |
 
 Take a look at the [examples](example_test.go) to see these options in action.
 
@@ -220,6 +222,8 @@ Basic payload with fields of type `string`, `int` and `bool`.
 #### Complex [[source](https://github.com/wI2L/jettison/blob/master/bench_test.go#L65)]
 
 Large payload with a variety of composite Go types, such as `struct`, `map`, `interface`, multi-dimensions `array` and `slice`, with pointer and non-pointer value types.
+
+Please note that this test is somewhat positively influenced by the performances of map marshaling.
 
 ![Complex Benchmark Graph](./images/benchmarks/complex.svg)
 

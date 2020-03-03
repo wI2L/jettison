@@ -390,6 +390,10 @@ func newMapInstr(t reflect.Type) instruction {
 	if !isString(kt) && !kt.Implements(textMarshalerType) {
 		ki = wrapQuotedInstr(ki)
 	}
+	// See issue golang.org/issue/33675 for reference.
+	if kt.Implements(textMarshalerType) && kt.Kind() == reflect.Ptr {
+		ki = wrapTextMarshalerNilCheck(ki)
+	}
 	vi = newInstruction(et, false, false)
 
 	return func(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
@@ -412,5 +416,14 @@ func wrapQuotedInstr(ins instruction) instruction {
 			dst = append(dst, '"')
 		}
 		return dst, err
+	}
+}
+
+func wrapTextMarshalerNilCheck(ins instruction) instruction {
+	return func(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
+		if *(*unsafe.Pointer)(p) == nil {
+			return append(dst, `""`...), nil
+		}
+		return ins(p, dst, opts)
 	}
 }

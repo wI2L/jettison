@@ -637,7 +637,7 @@ func encodeMarshaler(
 	// } else if v.IsNil() {
 	// 	return append(dst, "null"...), nil
 	// }
-	// return fn(e, v.Interface(), w, t)
+	// return fn(v.Interface(), dst, opts, t)
 	//
 	if !canAddr {
 		if t.Kind() == reflect.Ptr || t.Kind() == reflect.Interface {
