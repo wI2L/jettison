@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
 ## [v0.7.1] - 2020-03-03
-- Fix a regression in the marshaling of `nil` map keys that implement the `encoding.TextMarshaler` interface, intoduced during refactor in version **0.5.0**.
+- Fix a regression in the marshaling of `nil` map keys that implement the `encoding.TextMarshaler` interface, intoduced during refactor in version [**v0.5.0**](https://github.com/wI2L/jettison/compare/v0.4.1...v0.5.0).
 - Split `TestTextMarshalerMapKey` and `TestNilMarshaler` tests with build constraints to allow previously ignored cases to run with Go1.14.
 
 ## [v0.7.0] - 2020-02-17
@@ -60,6 +60,7 @@ This includes the following changes, but not limited to:
 ## [v0.1.0] - 2019-08-30
 Initial realease.
 
+[v0.7.1]: https://github.com/wI2L/jettison/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/wI2L/jettison/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/wI2L/jettison/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/wI2L/jettison/compare/v0.4.1...v0.5.0
