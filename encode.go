@@ -208,7 +208,8 @@ fieldLoop:
 		// Find the nested struct field by following
 		// the offset sequence, indirecting encountered
 		// pointers as needed.
-		for _, s := range f.embedSeq {
+		for i := 0; i < len(f.embedSeq); i++ {
+			s := &f.embedSeq[i]
 			v = unsafe.Pointer(uintptr(v) + s.offset)
 			if s.indir {
 				if v = *(*unsafe.Pointer)(v); v == nil {
@@ -231,10 +232,9 @@ fieldLoop:
 		if f.omitEmpty && f.empty(v) {
 			continue
 		}
+		key = f.keyEscHTML
 		if noHTMLEscape {
 			key = f.keyNonEsc
-		} else {
-			key = f.keyEscHTML
 		}
 		dst = append(dst, nxt)
 		nxt = ','
@@ -816,7 +816,7 @@ func appendEscapedBytes(dst []byte, b []byte, opts encOpts) []byte {
 	noCoerce := opts.flags.has(noUTF8Coercion)
 	noEscape := opts.flags.has(noHTMLEscaping)
 
-	for i < len(b) {
+	for len(b) > i {
 		if c := b[i]; c < utf8.RuneSelf {
 			if isSafeJSONChar(c) && (noEscape || !isHTMLChar(c)) {
 				// If the current character doesn't need

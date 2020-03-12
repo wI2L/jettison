@@ -22,8 +22,8 @@ type Option func(*encOpts)
 
 type bitmask uint64
 
-func (b *bitmask) set(f bitmask)      { *b |= f }
-func (b *bitmask) has(f bitmask) bool { return *b&f != 0 }
+func (b *bitmask) set(f bitmask)     { *b |= f }
+func (b bitmask) has(f bitmask) bool { return b&f != 0 }
 
 const (
 	unixTime bitmask = 1 << iota
