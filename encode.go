@@ -793,18 +793,6 @@ func appendCompactJSON(dst, src []byte, escHTML bool) ([]byte, error) {
 	return dst, nil
 }
 
-// isSafeJSONChar returns whether c can be used
-// in a JSON string without escaping.
-func isSafeJSONChar(c byte) bool {
-	return c >= ' ' && c != '\\' && c != '"'
-}
-
-// isHTMLChar returns whether c is a problematic
-// HTML cgaracter that must be escaped.
-func isHTMLChar(c byte) bool {
-	return c == '&' || c == '<' || c == '>'
-}
-
 func appendEscapedBytes(dst []byte, b []byte, opts encOpts) []byte {
 	if opts.flags.has(noStringEscaping) {
 		return append(dst, b...)
@@ -816,9 +804,12 @@ func appendEscapedBytes(dst []byte, b []byte, opts encOpts) []byte {
 	noCoerce := opts.flags.has(noUTF8Coercion)
 	noEscape := opts.flags.has(noHTMLEscaping)
 
-	for len(b) > i {
+	for i < len(b) {
 		if c := b[i]; c < utf8.RuneSelf {
-			if isSafeJSONChar(c) && (noEscape || !isHTMLChar(c)) {
+			// Check whether c can be used in a JSON string
+			// without escaping, or it is a problematic HTML
+			// character.
+			if c >= ' ' && c != '\\' && c != '"' && (noEscape || (c != '<' && c != '>' && c != '&')) {
 				// If the current character doesn't need
 				// to be escaped, accumulate the bytes to
 				// save some operations.
