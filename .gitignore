@@ -48,6 +48,8 @@ Godeps/
 # CI/CD
 benchstats
 .benchruns
+.benchstats.csv
+.benchstats.json
 
 # NodeJS
 node_modules

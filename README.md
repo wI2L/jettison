@@ -131,8 +131,8 @@ These benchmarks were run 10x (statistics computed with [benchstat](https://godo
 OS:  macOS Mojave (10.14.6)
 CPU: 2.6 GHz Intel Core i7
 Mem: 16GB
-Go:  go version go1.13.7 darwin/amd64
-Tag: v0.7.0
+Go:  go version go1.15 darwin/amd64
+Tag: v0.7.1
 ```
 
 <details><summary>Stats</summary><br><pre>

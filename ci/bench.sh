@@ -2,6 +2,10 @@
 
 set -e
 
+rm -f .benchruns
+rm -f .benchstats.csv
+rm -f .benchstats.json
+
 echo "Starting benchmark..."
 
 # Execute benchmarks multiple times.
