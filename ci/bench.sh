@@ -19,10 +19,7 @@ do
    fi
 done
 
-# Use an absolute path because the setup-go
-# GitHub action does not set the PATH env var.
-# See https://github.com/actions/setup-go/issues/14.
-"$(go env GOPATH)/bin/benchstat" .benchruns | tee benchstats
+benchstat .benchruns | tee benchstats
 
 if [ "$CHARTS" == "true" ]; then
    echo -e "\nGenerating charts..."
@@ -30,7 +27,7 @@ if [ "$CHARTS" == "true" ]; then
    # Convert benchmark statistics to CSV and
    # transform the output to JSON-formatted
    # data tables interpretable by Google Charts.
-   "$(go env GOPATH)/bin/benchstat" -csv -norange .benchruns > .benchstats.csv
+   benchstat -csv -norange .benchruns > .benchstats.csv
    go run tools/benchparse/benchparse.go -in .benchstats.csv -out .benchstats.json -omit-bandwidth -omit-allocs
 
    # Generate chart images and apply trim/border
