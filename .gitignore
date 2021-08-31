@@ -46,6 +46,7 @@ vendor/
 Godeps/
 
 # CI/CD
+coverage.txt
 benchstats
 .benchruns
 .benchstats.csv
