@@ -133,7 +133,7 @@ OS:  macOS Catalina (10.15.7)
 CPU: 2.6 GHz Intel Core i7
 Mem: 16GB
 Go:  go version go1.17 darwin/amd64
-Tag: v0.8.0
+Tag: v0.7.2
 ```
 
 <details><summary>Stats</summary><br><pre>
