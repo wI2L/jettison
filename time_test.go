@@ -29,6 +29,22 @@ func TestDurationFmtString(t *testing.T) {
 	}
 }
 
+func TestIssue2(t *testing.T) {
+	type x struct {
+		F time.Duration `json:"foobar" yaml:"foobar"`
+	}
+	xx := &x{}
+	b, err := MarshalOpts(xx, DurationFormat(DurationString))
+	if err != nil {
+		t.Error(err)
+	}
+	const want = `{"foobar":"0s"}`
+
+	if s := string(b); s != want {
+		t.Errorf("expected %q, got %q", want, s)
+	}
+}
+
 func TestAppendDuration(t *testing.T) {
 	// Taken from https://golang.org/src/time/time_test.go
 	var testdata = []struct {

@@ -58,7 +58,7 @@ func appendDuration(dst []byte, d time.Duration) []byte {
 		l--
 		switch {
 		case u == 0:
-			return zeroDuration
+			return append(dst, zeroDuration...)
 		case u < uint64(time.Microsecond):
 			prec = 0
 			buf[l] = 'n'

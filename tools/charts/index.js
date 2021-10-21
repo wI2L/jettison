@@ -9,7 +9,7 @@ const path = require('path')
 const prog = require('commander')
 const util = require('util')
 const deca = require('decamelize')
-const SVGO = require('svgo')
+const { optimize } = require('svgo');
 
 prog
     .option('-f, --input <file>', 'json-formatted benchmark data file')
@@ -67,22 +67,22 @@ function exportChartAsSVG (e, name) {
     svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
     svg.setAttribute('version', '1.1')
 
-    var svgo = new SVGO({
+    const result = optimize(svg.outerHTML, {
         plugins: [{
-            sortAttrs: true
+            name: "sortAttrs"
         }, {
-            removeAttrs: {
-                attrs: '(clip-path|aria-label|overflow)'
+            name: "removeAttrs",
+            params: {
+                attrs: "(clip-path|aria-label|overflow)"
             }
-        }]
+        }],
+        multipass: true
     })
-    svgo.optimize(svg.outerHTML, {}).then(function (result) {
-        try {
-            return fs.writeFileSync(filename, result.data)
-        } catch (err) {
-            console.error('cannot write svg chart %s: %s', filename, err)
-        }
-    })
+    try {
+        return fs.writeFileSync(filename, result.data)
+    } catch (err) {
+        console.error('cannot write svg chart %s: %s', filename, err)
+    }
 }
 
 function htmlToElement (html) {
