@@ -1,4 +1,4 @@
-module github.com/kanrin/jettison
+module github.com/wI2L/jettison
 
 go 1.17
 
