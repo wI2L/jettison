@@ -54,3 +54,6 @@ benchstats
 
 # NodeJS
 node_modules
+
+# ide files
+.idea
