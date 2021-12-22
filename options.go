@@ -42,6 +42,7 @@ const (
 type encOpts struct {
 	ctx         context.Context
 	timeLayout  string
+	timezone    *time.Location
 	durationFmt DurationFmt
 	flags       bitmask
 	allowList   stringSet
@@ -188,6 +189,18 @@ func NoCompact() Option {
 func TimeLayout(layout string) Option {
 	return func(o *encOpts) {
 		o.timeLayout = layout
+	}
+}
+
+// Timezone sets the timezone used to encode
+// default is local timezone
+func Timezone(timezone string) Option {
+	tz, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil
+	}
+	return func(o *encOpts) {
+		o.timezone = tz
 	}
 }
 

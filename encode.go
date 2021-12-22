@@ -19,7 +19,7 @@ import (
 
 const hex = "0123456789abcdef"
 
-//nolint:unparam
+// nolint:unparam
 func encodeBool(p unsafe.Pointer, dst []byte, _ encOpts) ([]byte, error) {
 	if *(*bool)(p) {
 		return append(dst, "true"...), nil
@@ -40,7 +40,7 @@ func encodeString(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 	return dst, nil
 }
 
-//nolint:unparam
+// nolint:unparam
 func encodeQuotedString(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 	dst = append(dst, `"\"`...)
 	dst = appendEscapedBytes(dst, sp2b(p), opts)
@@ -121,7 +121,11 @@ func encodeTime(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 		return appendRFC3339Time(t, dst, true), nil
 	default:
 		dst = append(dst, '"')
-		dst = t.AppendFormat(dst, opts.timeLayout)
+		if opts.timezone == nil {
+			dst = t.Local().AppendFormat(dst, opts.timeLayout)
+		} else {
+			dst = t.In(opts.timezone).AppendFormat(dst, opts.timeLayout)
+		}
 		dst = append(dst, '"')
 		return dst, nil
 	}
