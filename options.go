@@ -193,7 +193,7 @@ func TimeLayout(layout string) Option {
 }
 
 // Timezone sets the timezone used to encode
-// default is local timezone
+// default is default timezone in time.Time
 func Timezone(timezone string) Option {
 	tz, err := time.LoadLocation(timezone)
 	if err != nil {

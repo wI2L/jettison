@@ -122,7 +122,7 @@ func encodeTime(p unsafe.Pointer, dst []byte, opts encOpts) ([]byte, error) {
 	default:
 		dst = append(dst, '"')
 		if opts.timezone == nil {
-			dst = t.Local().AppendFormat(dst, opts.timeLayout)
+			dst = t.AppendFormat(dst, opts.timeLayout)
 		} else {
 			dst = t.In(opts.timezone).AppendFormat(dst, opts.timeLayout)
 		}
