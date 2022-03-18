@@ -54,21 +54,6 @@ type hiter struct {
 
 var zeroHiter = &hiter{}
 
-func newHiter(t, m unsafe.Pointer) *hiter {
-	v := hiterPool.Get()
-	if v == nil {
-		return newmapiter(t, m)
-	}
-	it := v.(*hiter)
-	*it = *zeroHiter
-	mapiterinit(t, m, unsafe.Pointer(it))
-	return it
-}
-
-//go:noescape
-//go:linkname newmapiter reflect.mapiterinit
-func newmapiter(unsafe.Pointer, unsafe.Pointer) *hiter
-
 //go:noescape
 //go:linkname mapiterinit runtime.mapiterinit
 func mapiterinit(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer)
