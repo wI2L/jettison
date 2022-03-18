@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 **THIS LIBRARY IS STILL IN ALPHA AND THERE ARE NO GUARANTEES REGARDING API STABILITY YET**
 
+## [v0.7.4] - 2022-03-18
+- Fix `reflect.mapiterinit` function prototype for go1.18, changed in https://github.com/golang/go/commit/1b2d794ca3ba60c2dbc958a271662784a7122739.
+
 ## [v0.7.3] - 2021-11-02
 - Fix the encoding of zero-value time.Duration type in string format.
 

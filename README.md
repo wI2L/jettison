@@ -64,7 +64,7 @@ All notable differences with the standard library behavior are listed below. Ple
 
 - Nil struct fields implementing the `encoding.TextMarshaler` interface are encoded as `null`, while the `encoding/json` package currently panic because of that. See this [issue](https://github.com/golang/go/issues/34235) for more details.<sup>[1]</sup>
 
-<sup>1: The issues mentioned above have had their associated CL merged, and should be shipped with Go 1.14.</sup>
+<sup>1: The issues mentioned above have had their associated CL merged, and was released with Go 1.14.</sup>
 
 ## Usage
 
