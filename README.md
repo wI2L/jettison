@@ -22,7 +22,7 @@ Jettison uses [Go modules](https://github.com/golang/go/wiki/Modules). Releases 
 $ go get github.com/wI2L/jettison@latest
 ```
 
-:warning: From version `v0.7.4`, the packages requires [Go 1.17+](https://golang.org/doc/install) to build, due to the usage of the [new build constraints](https://go.googlesource.com/proposal/+/master/design/draft-gobuild.md).
+:warning: From version `v0.7.4`, the package requires [Go 1.17+](https://golang.org/doc/install) to build, due to the usage of the [new build constraints](https://go.googlesource.com/proposal/+/master/design/draft-gobuild.md).
 
 ## Key features
 
