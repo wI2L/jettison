@@ -446,7 +446,7 @@ func TestUnsortedSyncMap(t *testing.T) {
 	if err := json.Unmarshal(bts, &m); err != nil {
 		t.Fatal(err)
 	}
-	// Unmarshaled map must contains exactly the
+	// Unmarshaled map must contain exactly the
 	// number of entries added to the sync map.
 	if g, w := len(m), len(entries); g != w {
 		t.Errorf("invalid lengths: got %d, want %d", g, w)
@@ -1047,6 +1047,7 @@ func TestStructFieldOmitnil(t *testing.T) {
 // TestQuotedStructFields tests that the fields of
 // a struct with the string option are quoted during
 // marshaling if the type support it.
+//
 //nolint:staticcheck
 func TestQuotedStructFields(t *testing.T) {
 	type x struct {
@@ -1943,5 +1944,79 @@ func TestMarshalFloat(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+type (
+	jm  int
+	jmp int
+)
+
+func (m jm) MarshalJSON() ([]byte, error) {
+	if m == 0 {
+		return []byte("null"), nil
+	}
+	return []byte(strconv.Itoa(int(m))), nil
+}
+
+func (m *jmp) MarshalJSON() ([]byte, error) {
+	if m == nil || *m == 0 {
+		return []byte("null"), nil
+	}
+	return []byte(strconv.Itoa(int(*m))), nil
+}
+
+func TestIssue5(t *testing.T) {
+	type X struct {
+		JMA  jm   `json:"jma,omitnil"`
+		JMB  jm   `json:"jmb,omitnil"`
+		JMC  *jm  `json:"jmc,omitnil"`
+		JMD  *jm  `json:"jmd,omitnil"`
+		JME  jm   `json:"jme"`
+		JMF  *jm  `json:"jmf"`
+		JMG  *jm  `json:"jmg,omitnil"`
+		JMPA jmp  `json:"jmpa,omitnil"`
+		JMPB jmp  `json:"jmpb,omitnil"`
+		JMPC *jmp `json:"jmpc,omitnil"`
+		JMPD *jmp `json:"jmpd,omitnil"`
+		JMPE *jmp `json:"jmpe"`
+		JMPF *jmp `json:"jmpf"`
+		JMPG jmp  `json:"jmpg"`
+		JMPH *jmp `json:"jmph,omitnil"`
+	}
+	var (
+		jmc  = jm(2)
+		jmd  = jm(0)
+		jmpc = jmp(2)
+		jmpd = jmp(0)
+	)
+	x := X{
+		JMA:  jm(4),
+		JMB:  jm(0),
+		JMC:  &jmc,
+		JMD:  &jmd,
+		JME:  jm(0),
+		JMF:  &jmd,
+		JMG:  nil,
+		JMPA: jmp(4),
+		// note: the JMPB field implementation of MarshalJSON
+		// has a pointer-receiver, but the field itself is not
+		// a pointer, therefore the method is not invoked and
+		// the omitnil option does not apply.
+		JMPB: jmp(0),
+		JMPC: &jmpc,
+		JMPD: &jmpd,
+		JMPE: nil,
+		JMPF: &jmpd,
+		JMPG: jmp(0), // same as JMPB,
+		JMPH: nil,
+	}
+	b, err := Marshal(x)
+	if err != nil {
+		t.Error(err)
+	}
+	want := []byte(`{"jma":4,"jmc":2,"jme":null,"jmf":null,"jmpa":4,"jmpb":0,"jmpc":2,"jmpe":null,"jmpf":null,"jmpg":0}`)
+	if bytes.Compare(b, want) != 0 {
+		t.Errorf("got %s, want %s,", string(b), string(want))
 	}
 }

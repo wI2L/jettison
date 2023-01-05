@@ -80,7 +80,7 @@ func storeInstr(key unsafe.Pointer, instr instruction, cache instrCache) {
 
 // newInstruction returns an instruction to encode t.
 // canAddr and quoted respectively indicates if the
-// value to encode is addressable and must enclosed
+// value to encode is addressable and must be enclosed
 // with double-quote character in the output.
 func newInstruction(t reflect.Type, canAddr, quoted bool) instruction {
 	// Go types must be checked first, because a Duration
@@ -301,6 +301,9 @@ func newStructFieldsInstr(t reflect.Type, canAddr bool) instruction {
 
 		if etyp.Kind() == reflect.Ptr {
 			etyp = etyp.Elem()
+		}
+		if f.omitNil && (ftyp.Implements(jsonMarshalerType) || reflect.PtrTo(ftyp).Implements(jsonMarshalerType)) {
+			f.omitNullMarshaler = true
 		}
 		if !isNilable(ftyp) {
 			// Disable the omitnil option, to

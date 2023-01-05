@@ -1,6 +1,7 @@
 package jettison
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/base64"
 	"encoding/json"
@@ -203,16 +204,16 @@ fieldLoop:
 		if opts.isDeniedField(f.name) {
 			continue
 		}
-		v := p
+		fp := p
 
 		// Find the nested struct field by following
 		// the offset sequence, indirecting encountered
 		// pointers as needed.
 		for i := 0; i < len(f.embedSeq); i++ {
 			s := &f.embedSeq[i]
-			v = unsafe.Pointer(uintptr(v) + s.offset)
+			fp = unsafe.Pointer(uintptr(fp) + s.offset)
 			if s.indir {
-				if v = *(*unsafe.Pointer)(v); v == nil {
+				if fp = *(*unsafe.Pointer)(fp); fp == nil {
 					// When we encounter a nil pointer
 					// in the chain, we have no choice
 					// but to ignore the field.
@@ -222,27 +223,34 @@ fieldLoop:
 		}
 		// Ignore the field if it is a nil pointer and has
 		// the omitnil option in his tag.
-		if f.omitNil && *(*unsafe.Pointer)(v) == nil {
+		if f.omitNil && *(*unsafe.Pointer)(fp) == nil {
 			continue
 		}
 		// Ignore the field if it represents the zero-value
 		// of its type and has the omitempty option in his tag.
 		// Empty func is non-nil only if the field has the
 		// omitempty option in its tag.
-		if f.omitEmpty && f.empty(v) {
+		if f.omitEmpty && f.empty(fp) {
 			continue
 		}
 		key = f.keyEscHTML
 		if noHTMLEscape {
 			key = f.keyNonEsc
 		}
+		lastKeyOffset := len(dst)
 		dst = append(dst, nxt)
+		if nxt == '{' {
+			lastKeyOffset++
+		}
 		nxt = ','
 		dst = append(dst, key...)
 
 		var err error
-		if dst, err = f.instr(v, dst, opts); err != nil {
+		if dst, err = f.instr(fp, dst, opts); err != nil {
 			return dst, err
+		}
+		if f.omitNullMarshaler && len(dst) > 4 && bytes.Compare(dst[len(dst)-4:], []byte("null")) == 0 {
+			dst = dst[:lastKeyOffset]
 		}
 	}
 	if nxt == '{' {

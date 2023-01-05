@@ -56,7 +56,7 @@ All notable differences with the standard library behavior are listed below. Ple
 
 - The `sync.Map` type is handled natively. The marshaling behavior is similar to the one of a standard Go `map`. The option `UnsortedMap` can also be used in cunjunction with this type to disable the default keys sort.
 
-- The `omitnil` field tag's option can be used to specify that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option.
+- The `omitnil` field tag's option can be used to specify that a field with a nil pointer should be omitted from the encoding. This option has precedence over the `omitempty` option. Note that struct fields that implement the `json.Marshaler` interface will be omitted too, if they return the literal JSON `null` value.
 
 #### Bugs
 

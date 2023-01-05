@@ -20,17 +20,18 @@ type seq struct {
 }
 
 type field struct {
-	typ        reflect.Type
-	name       string
-	keyNonEsc  []byte
-	keyEscHTML []byte
-	index      []int
-	tag        bool
-	quoted     bool
-	omitEmpty  bool
-	omitNil    bool
-	instr      instruction
-	empty      emptyFunc
+	typ               reflect.Type
+	name              string
+	keyNonEsc         []byte
+	keyEscHTML        []byte
+	index             []int
+	tag               bool
+	quoted            bool
+	omitEmpty         bool
+	omitNil           bool
+	omitNullMarshaler bool
+	instr             instruction
+	empty             emptyFunc
 
 	// embedSeq represents the sequence of offsets
 	// and indirections to follow to reach the field
