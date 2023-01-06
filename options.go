@@ -81,7 +81,7 @@ func (eo encOpts) validate() error {
 // identified by its name must be skipped during
 // the encoding of a struct.
 func (eo encOpts) isDeniedField(name string) bool {
-	// The deny list has precedence and must
+	// The deny-list has precedence and must
 	// be checked first if it has entries.
 	if eo.denyList != nil {
 		if _, ok := eo.denyList[name]; ok {
@@ -209,8 +209,8 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-// AllowList sets the list of first-level fields
-// which are to be considered when encoding a struct.
+// AllowList sets the list of fields which are to be
+// considered when encoding a struct.
 // The fields are identified by the name that is
 // used in the final JSON payload.
 // See DenyFields documentation for more information
@@ -224,7 +224,7 @@ func AllowList(fields []string) Option {
 
 // DenyList is similar to AllowList, but conversely
 // sets the list of fields to omit during encoding.
-// When used in cunjunction with AllowList, denied
+// When used in conjunction with AllowList, denied
 // fields have precedence over the allowed fields.
 func DenyList(fields []string) Option {
 	m := fieldListToSet(fields)
