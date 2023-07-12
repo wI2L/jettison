@@ -245,10 +245,12 @@ fieldLoop:
 		nxt = ','
 		dst = append(dst, key...)
 
+		opts.parentFieldNameList = append(opts.parentFieldNameList, f.name)
 		var err error
 		if dst, err = f.instr(fp, dst, opts); err != nil {
 			return dst, err
 		}
+		opts.parentFieldNameList = opts.parentFieldNameList[:len(opts.parentFieldNameList)-1]
 		if f.omitNullMarshaler && len(dst) > 4 && bytes.Compare(dst[len(dst)-4:], []byte("null")) == 0 {
 			dst = dst[:lastKeyOffset]
 		}
