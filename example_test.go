@@ -329,17 +329,24 @@ func ExampleAllowList() {
 		Y:     Y{Pi: "4"},
 	}
 	for _, opt := range []jettison.Option{
-		nil, jettison.AllowList([]string{"Z", "β", "Gamma", "π"}),
+		nil,
+		jettison.AllowList([]string{"Z", "β", "Gamma", "π"}),
+		jettison.AllowListWithChild([]string{"Z", "β", "Gamma", "π"}),
+		jettison.AllowList([]string{"Z.ω", "β", "Gamma", "π"}),
 	} {
 		b, err := jettison.MarshalOpts(x, opt)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s\n", string(b))
+
+		str := string(b)
+		fmt.Printf("%s\n", str)
 	}
 	// Output:
 	// {"Z":{"ω":42},"α":"1","β":"2","Gamma":"3","π":"4"}
 	// {"Z":{},"β":"2","Gamma":"3","π":"4"}
+	// {"Z":{"ω":42},"β":"2","Gamma":"3","π":"4"}
+	// {"Z":{"ω":42},"β":"2","Gamma":"3","π":"4"}
 }
 
 func ExampleDenyList() {
