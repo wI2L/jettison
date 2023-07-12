@@ -3,6 +3,7 @@ package jettison
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -40,12 +41,18 @@ const (
 )
 
 type encOpts struct {
-	ctx         context.Context
-	timeLayout  string
-	durationFmt DurationFmt
-	flags       bitmask
-	allowList   stringSet
-	denyList    stringSet
+	ctx                 context.Context
+	timeLayout          string
+	durationFmt         DurationFmt
+	flags               bitmask
+	allowList           *fieldTree
+	allowFieldChild     bool
+	denyList            *fieldTree
+	parentFieldNameList []string
+}
+
+type fieldTree struct {
+	children map[string]*fieldTree
 }
 
 func defaultEncOpts() encOpts {
@@ -83,25 +90,61 @@ func (eo encOpts) validate() error {
 func (eo encOpts) isDeniedField(name string) bool {
 	// The deny-list has precedence and must
 	// be checked first if it has entries.
+
+	isExistFunc := func(fieldTree *fieldTree, matchAllChildren bool) bool {
+		var isExist bool
+		for _, fieldName := range eo.parentFieldNameList {
+			fieldTree, isExist = fieldTree.children[fieldName]
+			if !isExist {
+				return false
+			}
+			// tree have no children level, match all child field
+			if matchAllChildren && len(fieldTree.children) == 0 {
+				return true
+			}
+		}
+		_, isExist = fieldTree.children[name]
+		return isExist
+	}
 	if eo.denyList != nil {
-		if _, ok := eo.denyList[name]; ok {
+		if ok := isExistFunc(eo.denyList, true); ok {
 			return true
 		}
 	}
 	if eo.allowList != nil {
-		if _, ok := eo.allowList[name]; !ok {
+		if ok := isExistFunc(eo.allowList, eo.allowFieldChild); !ok {
 			return true
 		}
 	}
 	return false
 }
 
-type stringSet map[string]struct{}
+// fieldListToStringTree split field name to tree
+func fieldListToStringTree(list []string) *fieldTree {
+	m := &fieldTree{
+		children: make(map[string]*fieldTree),
+	}
+	for _, fieldName := range list {
+		fieldNameInfos := strings.Split(fieldName, ".")
+		fieldElement := m.children[fieldNameInfos[0]]
+		if fieldElement == nil {
+			fieldElement = &fieldTree{
+				children: make(map[string]*fieldTree),
+			}
+			m.children[fieldNameInfos[0]] = fieldElement
+		}
 
-func fieldListToSet(list []string) stringSet {
-	m := make(stringSet)
-	for _, f := range list {
-		m[f] = struct{}{}
+		for _, f := range fieldNameInfos[1:] {
+			fieldElementChild := fieldElement.children[f]
+			if fieldElementChild == nil {
+				fieldElementChild = &fieldTree{
+					children: make(map[string]*fieldTree),
+				}
+				fieldElement.children[f] = fieldElementChild
+			}
+			fieldElement = fieldElementChild
+		}
+
 	}
 	return m
 }
@@ -216,9 +259,24 @@ func WithContext(ctx context.Context) Option {
 // See DenyFields documentation for more information
 // regarding joint use with this option.
 func AllowList(fields []string) Option {
-	m := fieldListToSet(fields)
+	m := fieldListToStringTree(fields)
 	return func(o *encOpts) {
 		o.allowList = m
+	}
+}
+
+// AllowListWithChild sets the list of fields which are to be
+// considered when encoding a struct.
+// The fields and child fields are identified by the name that is
+// used in the final JSON payload.
+// See DenyFields documentation for more information
+// regarding joint use with this option.
+// field name like this a or a.b a.b.c
+func AllowListWithChild(fields []string) Option {
+	m := fieldListToStringTree(fields)
+	return func(o *encOpts) {
+		o.allowList = m
+		o.allowFieldChild = true
 	}
 }
 
@@ -227,7 +285,7 @@ func AllowList(fields []string) Option {
 // When used in conjunction with AllowList, denied
 // fields have precedence over the allowed fields.
 func DenyList(fields []string) Option {
-	m := fieldListToSet(fields)
+	m := fieldListToStringTree(fields)
 	return func(o *encOpts) {
 		o.denyList = m
 	}
