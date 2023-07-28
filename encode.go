@@ -249,7 +249,7 @@ fieldLoop:
 		if dst, err = f.instr(fp, dst, opts); err != nil {
 			return dst, err
 		}
-		if f.omitNullMarshaler && len(dst) > 4 && bytes.Compare(dst[len(dst)-4:], []byte("null")) == 0 {
+		if f.omitNullMarshaler && len(dst) > 4 && bytes.Equal(dst[len(dst)-4:], []byte("null")) {
 			dst = dst[:lastKeyOffset]
 		}
 	}

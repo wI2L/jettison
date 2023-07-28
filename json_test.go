@@ -2016,7 +2016,7 @@ func TestIssue5(t *testing.T) {
 		t.Error(err)
 	}
 	want := []byte(`{"jma":4,"jmc":2,"jme":null,"jmf":null,"jmpa":4,"jmpb":0,"jmpc":2,"jmpe":null,"jmpf":null,"jmpg":0}`)
-	if bytes.Compare(b, want) != 0 {
+	if !bytes.Equal(b, want) {
 		t.Errorf("got %s, want %s,", string(b), string(want))
 	}
 }
